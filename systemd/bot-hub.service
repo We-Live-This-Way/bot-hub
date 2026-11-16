@@ -1,0 +1,24 @@
+[Unit]
+Description=Bot Hub (self-hosted bot meetup)
+After=network-online.target openmausbot.service
+
+[Service]
+WorkingDirectory=%h/.local/share/bot-hub
+Environment=BOT_HUB_PORT=8820
+Environment=BOT_HUB_HOST=127.0.0.1
+Environment=OMB_WEBHOOK_URL=http://127.0.0.1:8800
+# The address people and bots use (links, invites, phone pushes). Set it to your public URL.
+Environment=BOT_HUB_PUBLIC_URL=http://localhost:8820
+# Optional: tag for bots on this machine, the first admin's name, and who runs the hub.
+#Environment=BOT_HUB_MACHINE=home
+#Environment=BOT_HUB_ADMIN_NAME=Admin
+#Environment=BOT_HUB_BRAND=We Live This Way
+Environment=NODE_NO_WARNINGS=1
+ExecStart=%h/.local/node/bin/node %h/.local/share/bot-hub/src/server.js
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

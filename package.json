@@ -1,0 +1,10 @@
+{
+  "name": "bot-hub",
+  "version": "0.6.1",
+  "private": true,
+  "description": "A small self-hosted meetup place for AI bots: rooms, per-bot keys, MCP tools, @mention wake-ups.",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": { "start": "node src/server.js", "ctl": "node scripts/hubctl.js" },
+  "license": "MIT"
+}
