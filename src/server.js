@@ -5,8 +5,9 @@ import { createServer } from "node:http";
 import { readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openDb, findMemberByKey } from "./db.js";
-import { Hub, httpError, isGuest, canUpload, AGENT_TYPES, MAX_FILE, PUBLIC_URL } from "./hub.js";
+import { openDb, findMemberByKey, extractAuth, installLogRedaction } from "./db.js";
+installLogRedaction();
+import { canGroupWake, canClassWake, Hub, httpError, isGuest, canUpload, AGENT_TYPES, MAX_FILE, PUBLIC_URL } from "./hub.js";
 import { handleRpc } from "./mcp.js";
 import { Waker } from "./wake.js";
 import { Notifier } from "./notify.js";
@@ -26,12 +27,26 @@ const synced = hub.syncModels(BOTS_JSON);
 if (synced) console.log(`models: updated ${synced} house bot(s) from bots.json`);
 setInterval(() => hub.syncModels(BOTS_JSON), 10 * 60_000).unref();
 const waker = new Waker(hub, { dataDir: DATA, ombBase: process.env.OMB_WEBHOOK_URL || "http://127.0.0.1:8800" });
+waker.startNoteDeliveries();   // v0.11: granted class notes go out to each bot (CLI grants included)
+
+async function setMemberWebhook(member, input) {
+  const hook = await waker.webhooks.set(member.id, input);
+  hub.updateMember(member.id, { wake: true, wakeVia: "webhook" });
+  return hook;
+}
+function clearMemberWebhook(member) {
+  const out = waker.webhooks.clear(member.id);
+  const fresh = hub.member(member.id);
+  if (fresh?.wake_via === "webhook") hub.updateMember(fresh.id, { wake: false, wakeVia: "local" });
+  return out;
+}
 
 const notifier = new Notifier(DATA);
 notifier.topic(); // make data/ntfy.json on first start
 
 const INDEX = () => readFileSync(join(ROOT, "public", "index.html"));
 const JOIN = () => readFileSync(join(ROOT, "public", "join.html"), "utf8").replaceAll("{{HUB_URL}}", PUBLIC_URL);
+const WATCH = () => readFileSync(join(ROOT, "public", "watch.html"));
 // The installable-app shell (PWA) and the shared join-request widget. Fixed list: nothing else under public/ is served.
 const STATIC = {
   "/manifest.webmanifest": ["manifest.webmanifest", "application/manifest+json", "public, max-age=3600"],
@@ -94,19 +109,18 @@ async function readJson(req, max = MAX_BODY) {
   if (!size) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw httpError(400, "Invalid JSON"); }
 }
-function bearer(req) {
-  const m = (req.headers.authorization || "").match(/^Bearer\s+(\S+)$/i);
-  return m ? m[1] : "";
-}
+function bearer(req) { return extractAuth(req).key; }
 function authenticate(req) {
   const ip = clientIp(req);
-  const member = findMemberByKey(db, bearer(req));
+  const found = extractAuth(req);
+  const member = findMemberByKey(db, found.key);
   if (!member) {
     if (limited(`badauth:${ip}`, 10)) throw httpError(429, "Too many failed sign-ins. Wait a minute.");
     throw httpError(401, "Missing or invalid key");
   }
   const L = lim(member);
   if (limited(`key:${member.id}`, L.req)) throw httpError(429, `Slow down: ${L.req} requests a minute per key`);
+  member._authMethod = found.method;
   return member;
 }
 // Always plain text and always a download: never rendered as HTML, so a file can't run script on the hub's origin.
@@ -125,6 +139,13 @@ async function route(req, res) {
 
   if (method === "GET" && (p === "/" || p === "/index.html")) return send(res, 200, INDEX(), "text/html; charset=utf-8");
   if (method === "GET" && (p === "/join" || p === "/join/")) return send(res, 200, JOIN(), "text/html; charset=utf-8");
+  // Public watch-only view of #classroom. No key. Other rooms 404. POST and friends are refused.
+  if (p === "/watch" || p === "/watch/" || p.startsWith("/watch/")) {
+    if (method !== "GET") throw httpError(405, "GET only");
+    if (p === "/watch" || p === "/watch/") return send(res, 200, WATCH(), "text/html; charset=utf-8");
+    if (p === "/watch/classroom" || p === "/watch/classroom/") { res.writeHead(302, { location: "/watch", ...SEC_HEADERS }); return res.end(); }
+    throw httpError(404, "Not found");
+  }
   if (method === "GET" && p === "/healthz") return send(res, 200, { ok: true });
   if (method === "GET" && STATIC[p]) {
     const [file, type, cache] = STATIC[p];
@@ -139,9 +160,16 @@ async function route(req, res) {
     if (method === "GET") { res.writeHead(405, { allow: "POST", ...SEC_HEADERS }); return res.end(); }
     if (method === "DELETE") { res.writeHead(200, SEC_HEADERS); return res.end(); }
     if (method !== "POST") throw httpError(405, "POST only");
-    const member = authenticate(req);
+    const found = extractAuth(req);
+    let member;
+    try { member = authenticate(req); }
+    catch (e) {
+      if (e.status === 401 || e.status === 429) console.log(`mcp auth failed (auth: ${found.method || "none"})`);
+      throw e;
+    }
     const body = await readJson(req);
-    if (body?.method === "initialize" || body?.method === "tools/list") console.log(`mcp ${body.method} from ${member.name}`);
+    const call = body?.method === "tools/call" && body?.params?.name ? ` ${body.params.name}` : "";
+    if (body?.method) console.log(`mcp ${body.method}${call} from ${member.name} (auth: ${member._authMethod || found.method || "none"})`);
     const isPost = (x) => x?.method === "tools/call" && x?.params?.name === "post";
     const slow = (x) => ({ jsonrpc: "2.0", id: x.id, result: { isError: true, content: [{ type: "text", text: `Slow down: ${lim(member).posts} posts a minute` }] } });
     const one = (x) => (isPost(x) && limited(`post:${member.id}`, lim(member).posts) ? slow(x) : handleRpc(hub, member, x));
@@ -181,6 +209,13 @@ async function route(req, res) {
     if (limited(`dl:${clientIp(req)}`, 60)) throw httpError(429, "Too many downloads. Wait a minute.");
     return sendFile(res, hub.publicFile(m[1], { byToken: true }));
   }
+  // ----- v0.11 one-time class-notes links: /n/<token>[/<name>], no key, works once, expires, revocable -----
+  if (method === "GET" && (m = p.match(/^\/n\/([A-Za-z0-9_-]{24,64})(?:\/[^/]*)?$/))) {
+    if (limited(`dl:${clientIp(req)}`, 60)) throw httpError(429, "Too many downloads. Wait a minute.");
+    const f = hub.noteDownload(m[1], clientIp(req));
+    console.log(`class notes link ${f.link} used: file ${f.id} for ${f.member}`);
+    return sendFile(res, f);
+  }
   if (method === "GET" && (m = p.match(/^\/api\/files\/(\d+)$/)) && !bearer(req)) {
     if (limited(`dl:${clientIp(req)}`, 60)) throw httpError(429, "Too many downloads. Wait a minute.");
     const f = hub.publicFile(m[1]);
@@ -188,12 +223,48 @@ async function route(req, res) {
     return sendFile(res, f);
   }
 
+  // ----- public watch-only feed (no key accepted; #classroom only) -----
+  if (p.startsWith("/api/watch")) {
+    if (method !== "GET") throw httpError(405, "GET only");
+    if (limited(`watch:${clientIp(req)}`, 40)) throw httpError(429, "Too many requests. Wait a minute.");
+    const wm = p.match(/^\/api\/watch\/([a-z0-9-]{1,40})$/);
+    if (!wm) throw httpError(404, "Not found");
+    return send(res, 200, hub.watchRead(wm[1], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), editedSince: url.searchParams.get("editedSince") }));
+  }
+
   if (!p.startsWith("/api/")) throw httpError(404, "Not found");
   const me = authenticate(req);
   hub.touch(me);
 
-  if (method === "GET" && p === "/api/me") { const pm = hub.publicMember(me); if (!me.is_admin) delete pm.invitedBy; return send(res, 200, { ...pm, canUpload: canUpload(me), rooms: hub.rooms(me).map((r) => r.name) }); }
-  if (method === "GET" && p === "/api/rooms") return send(res, 200, { rooms: hub.rooms(me), ...hub.whosHere(me), ...(me.is_admin ? { pendingRequests: hub.pendingRequests() } : {}) });
+  if (method === "GET" && p === "/api/me") {
+    const pm = hub.publicMember(me);
+    if (!me.is_admin) delete pm.invitedBy;
+    return send(res, 200, { ...pm, canUpload: canUpload(me), rooms: hub.rooms(me).map((r) => r.name),
+      canGroupWake: canGroupWake(me), canClassWake: canClassWake(me), classNotes: hub.classNotes(me).length,
+      webhook: waker.webhooks.public(me.id) });
+  }
+  if (p === "/api/me/webhook") {
+    if (method === "GET") return send(res, 200, { webhook: waker.webhooks.public(me.id) });
+    if (method === "DELETE") return send(res, 200, { webhook: clearMemberWebhook(me) });
+    if (method === "POST") {
+      const b = await readJson(req);
+      return send(res, 200, { webhook: await setMemberWebhook(me, { url: b.url, header: b.header, value: b.value }) });
+    }
+    throw httpError(405, "GET, POST or DELETE");
+  }
+  if (method === "GET" && p === "/api/rooms") return send(res, 200, { rooms: hub.rooms(me, { personal: true }), dms: hub.dms(me, { personal: true }), ...hub.whosHere(me), ...(me.is_admin ? { pendingRequests: hub.pendingRequests() } : {}) });
+  if (method === "GET" && p === "/api/groups") return send(res, 200, { groups: hub.groupsFor(me) });
+  if (method === "GET" && p === "/api/dms") return send(res, 200, { dms: hub.dms(me, { personal: true }) });
+  if (method === "POST" && p === "/api/dms") {
+    const b = await readJson(req);
+    const opened = hub.openDm(me, b.member ?? b.name);
+    if (b.text) {
+      if (limited(`post:${me.id}`, lim(me).posts)) throw httpError(429, `Slow down: ${lim(me).posts} posts a minute`);
+      const message = hub.post(me, opened.room, b.text, { replyTo: b.reply_to ?? null, via: me.is_admin ? "web" : "api" });
+      return send(res, 201, { ...opened, message });
+    }
+    return send(res, 200, opened);
+  }
   if (method === "GET" && p === "/api/members")
     return send(res, 200, hub.membersView(me, url.searchParams.get("room") || null, (x) => waker.canWake(x)));
   // ----- polled wake-ups: a bot on another machine picks up its own @mentions and answers them -----
@@ -224,15 +295,40 @@ async function route(req, res) {
       return send(res, 201, r);
     }
   }
+  // ----- class notes (v0.7): gated files handed only to members who attended -----
+  if ((m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/class-files$/)) && method === "POST") {
+    if (!canUpload(me)) throw httpError(403, "Only the admin and teachers (members who can share files) can add class notes");
+    hub.roomFor(me, m[1]);
+    if (limited(`file:${me.id}`, 10)) throw httpError(429, "Slow down: too many files this minute");
+    const b = await readJson(req, MAX_FILE * 2 + 16 * 1024);
+    return send(res, 201, hub.attachGated(me, m[1], { name: b.name, content: b.content }));
+  }
+  if ((m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/attendance$/)) && method === "GET") return send(res, 200, hub.attendance(me, m[1], url.searchParams.get("since")));
+  if (method === "GET" && p === "/api/class-notes") return send(res, 200, { files: hub.classNotes(me) });
+  if (method === "POST" && (m = p.match(/^\/api\/files\/(\d+)\/deliver$/))) {   // v0.11: re-deliver to members who have the grant
+    const b = await readJson(req); return send(res, 200, hub.redeliverNotes(me, m[1], b.members ?? b.member ?? []));
+  }
+  if (method === "GET" && (m = p.match(/^\/api\/files\/(\d+)\/deliveries$/))) {
+    hub.gatedFileFor(me, m[1]);
+    return send(res, 200, { deliveries: hub.noteDeliveries({ fileId: m[1] }), links: hub.noteLinks(m[1]) });
+  }
+  if ((m = p.match(/^\/api\/files\/(\d+)\/grants$/))) {
+    if (method === "GET") return send(res, 200, hub.fileGrants(me, m[1]));
+    if (method === "POST") { const b = await readJson(req); return send(res, 200, hub.grantFile(me, m[1], b.members ?? b.member ?? [], b.on !== false)); }
+  }
   if ((m = p.match(/^\/api\/files\/(\d+)$/)) && method === "GET") {
     // Downloads are open; a key only adds the room and sharer for rooms that key can see.
     let f; try { f = hub.fileFor(me, m[1]); } catch (e) { if (e.status !== 403) throw e; f = hub.publicFile(m[1]); }
     if (url.searchParams.get("format") === "json") return send(res, 200, f);
     return sendFile(res, f);
   }
+  if (method === "POST" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/personal-clear$/)))
+    return send(res, 200, hub.personalClear(me, m[1]));
+  if (method === "POST" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/personal-unclear$/)))
+    return send(res, 200, hub.personalUnclear(me, m[1]));
   if ((m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/messages$/))) {
     if (method === "GET")
-      return send(res, 200, hub.read(m[1], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), before: url.searchParams.get("before") }, me));
+      return send(res, 200, hub.read(m[1], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), before: url.searchParams.get("before"), editedSince: url.searchParams.get("editedSince"), personal: true }, me));
     if (method === "POST") {
       hub.roomFor(me, m[1]); // 403 before counting the post
       if (limited(`post:${me.id}`, lim(me).posts)) throw httpError(429, `Slow down: ${lim(me).posts} posts a minute`);
@@ -241,11 +337,24 @@ async function route(req, res) {
     }
   }
 
+  // v0.8: edit your own message in place (marked edited; editing never wakes anyone).
+  if ((m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/messages\/(\d+)$/)) && method === "PATCH") {
+    hub.roomFor(me, m[1]);
+    if (limited(`post:${me.id}`, lim(me).posts)) throw httpError(429, `Slow down: ${lim(me).posts} posts a minute`);
+    const b = await readJson(req);
+    const row = hub.db.prepare("SELECT r.name FROM messages x JOIN rooms r ON r.id = x.room_id WHERE x.id = ?").get(Number(m[2]));
+    if (!row || row.name !== m[1]) throw httpError(404, "No such message in that room");
+    return send(res, 200, hub.edit(me, m[2], b.text));
+  }
+
   // ----- admin -----
   if (p.startsWith("/api/admin/")) {
     requireAdmin(me);
     if (method === "GET" && p === "/api/admin/members")
-      return send(res, 200, { members: hub.members().map((x) => ({ ...hub.publicMember(hub.member(x.id)), canWake: waker.canWake(hub.member(x.id)), wakeConfigured: waker.wakeConfigured(hub.member(x.id)) })) });
+      return send(res, 200, { members: hub.members().map((x) => {
+        const m = hub.member(x.id);
+        return { ...hub.publicMember(m), canWake: waker.canWake(m), wakeConfigured: waker.wakeConfigured(m), webhook: waker.webhooks.public(m.id) };
+      }) });
     if (method === "POST" && p === "/api/admin/members") {
       const b = await readJson(req);
       return send(res, 201, hub.addMember({ name: b.name, kind: b.kind ?? "bot", ombBotId: b.ombBotId ?? null, wake: !!b.wake, platform: b.platform ?? null, model: b.model ?? null }));
@@ -257,7 +366,7 @@ async function route(req, res) {
     }
     if ((m = p.match(/^\/api\/admin\/members\/(\d+)$/))) {
       if (method === "PATCH") { const b = await readJson(req); return send(res, 200, hub.updateMember(m[1], b)); }
-      if (method === "DELETE") return send(res, 200, hub.removeMember(m[1]));
+      if (method === "DELETE") { waker.webhooks.clear(Number(m[1])); return send(res, 200, hub.removeMember(m[1])); }
     }
     if (method === "POST" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/role$/))) {
       const b = await readJson(req);
@@ -269,6 +378,7 @@ async function route(req, res) {
       const status = await notifier.test();
       return send(res, status === 200 ? 200 : 502, { status });
     }
+    if (method === "POST" && (m = p.match(/^\/api\/admin\/note-links\/(\d+)\/revoke$/))) return send(res, 200, hub.revokeNoteLink(m[1]));
     if (method === "POST" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/rotate$/))) return send(res, 200, hub.rotateKey(m[1]));
     if (method === "POST" && p === "/api/admin/invites") {
       const b = await readJson(req);
@@ -288,9 +398,32 @@ async function route(req, res) {
     }
     if (method === "POST" && (m = p.match(/^\/api\/admin\/rooms\/([a-z0-9-]{1,40})\/roster$/))) { const b = await readJson(req); return send(res, 200, hub.setRoster(m[1], String(b.member ?? ""), !!b.on)); }
     if (method === "POST" && (m = p.match(/^\/api\/admin\/rooms\/([a-z0-9-]{1,40})\/listeners$/))) { const b = await readJson(req); return send(res, 200, hub.setListener(m[1], String(b.member ?? ""), !!b.on)); }
+    if (method === "POST" && (m = p.match(/^\/api\/admin\/rooms\/([a-z0-9-]{1,40})\/clear$/))) return send(res, 200, hub.clearRoom(me, m[1]));
+    if (method === "POST" && (m = p.match(/^\/api\/admin\/rooms\/([a-z0-9-]{1,40})\/unclear$/))) {
+      const b = await readJson(req);
+      return send(res, 200, hub.unclearRoom(me, m[1], { since: b.since }));
+    }
     if (method === "DELETE" && (m = p.match(/^\/api\/admin\/rooms\/([a-z0-9-]{1,40})$/))) return send(res, 200, hub.removeRoom(m[1]));
+    if (method === "GET" && p === "/api/admin/groups") return send(res, 200, { groups: hub.groups() });
+    if (method === "POST" && p === "/api/admin/groups") { const b = await readJson(req); return send(res, 201, hub.addGroup(b.name)); }
+    if (method === "DELETE" && (m = p.match(/^\/api\/admin\/groups\/([^/]+)$/))) return send(res, 200, hub.removeGroup(decodeURIComponent(m[1])));
+    if (method === "POST" && (m = p.match(/^\/api\/admin\/groups\/([^/]+)\/members$/))) {
+      const b = await readJson(req);
+      return send(res, 200, hub.setGroupMember(decodeURIComponent(m[1]), String(b.member ?? ""), !!b.on));
+    }
     if (method === "GET" && p === "/api/admin/wakes")
       return send(res, 200, { wakes: db.prepare("SELECT w.created_at, m.name, w.message_id, w.status, w.detail FROM wake_log w LEFT JOIN members m ON m.id = w.member_id ORDER BY w.id DESC LIMIT 50").all() });
+    if ((m = p.match(/^\/api\/admin\/members\/(\d+)\/webhook$/))) {
+      const who = hub.member(m[1]);
+      if (!who) throw httpError(404, "No such member");
+      if (method === "GET") return send(res, 200, { webhook: waker.webhooks.public(who.id) });
+      if (method === "DELETE") return send(res, 200, { webhook: clearMemberWebhook(who) });
+      if (method === "POST") {
+        const b = await readJson(req);
+        return send(res, 200, { webhook: await setMemberWebhook(who, { url: b.url, header: b.header, value: b.value }) });
+      }
+      throw httpError(405, "GET, POST or DELETE");
+    }
   }
   throw httpError(404, "Not found");
 }

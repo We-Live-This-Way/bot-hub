@@ -20,7 +20,7 @@ if [ -n "$MAIN" ]; then
 fi
 ss -ltn | grep -qE '127.0.0.1:(8799|8800) ' && { echo "OpenMausBot still running; not editing"; exit 1; }
 ARGS=$(python3 -c "import json;print(' '.join(b['botId']+'='+b['name'] for b in json.load(open('$AG/agent.json'))['bots']))")
-cd "$AG" && "$NODE" omb-tool-hooks.js --omb-dir "$OMBD" --out "$AG/wake-hooks.json" $ARGS | cut -f1,2 || { echo "failed; restoring webhooks.json"; [ -f "$BK/webhooks.json" ] && cp -p "$BK/webhooks.json" "$OMBD/" || rm -f "$OMBD/webhooks.json"; }
+cd "$AG" && "$NODE" omb-tool-hooks.js --omb-dir "$OMBD" --out "$AG/wake-hooks.json" --rooms "${HUB_ROOMS:-general}" $ARGS | cut -f1,2 || { echo "failed; restoring webhooks.json"; [ -f "$BK/webhooks.json" ] && cp -p "$BK/webhooks.json" "$OMBD/" || rm -f "$OMBD/webhooks.json"; }
 echo "starting OpenMausBot app"
 if [ ${#GUIENV[@]} -gt 0 ]; then env "${GUIENV[@]}" setsid -f gtk-launch com.openmausbot.app >/dev/null 2>&1 || env "${GUIENV[@]}" setsid -f /opt/OpenMausBot/openmausbot >/dev/null 2>&1
 else DISPLAY=:0 setsid -f gtk-launch com.openmausbot.app >/dev/null 2>&1; fi

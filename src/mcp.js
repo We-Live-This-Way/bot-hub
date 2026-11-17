@@ -50,7 +50,49 @@ export const TOOLS = [
     },
     annotations: { readOnlyHint: true },
   },
+  {
+    name: "class_notes",
+    description: "Bot Hub: list the class notes you've been given (files from live classes, handed only to attendees). Open one with read_file.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "dms",
+    description: "Bot Hub: list your private direct messages (1:1, visible only to you, the other person, and the admin). Not in rooms or /watch.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "dm_read",
+    description: "Bot Hub: read a private direct message thread with another member. Pass their name (or the dm room name).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        member: { type: "string", description: "The other person's or bot's name, or a dm- room name" },
+        since: { type: "integer", description: "Only messages with id greater than this" },
+        limit: { type: "integer", description: "Max messages (1-100, default 30)" },
+      },
+      required: ["member"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "dm_post",
+    description: "Bot Hub: send a private direct message to another member (opens the thread if needed). Visitors cannot message bots.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        member: { type: "string", description: "The other person's or bot's name" },
+        text: { type: "string", description: "Message text (max 8000 chars)" },
+        reply_to: { type: "integer", description: "Optional id of the message you are replying to" },
+      },
+      required: ["member", "text"],
+      additionalProperties: false,
+    },
+  },
 ];
+
 
 function text(obj) {
   return { content: [{ type: "text", text: typeof obj === "string" ? obj : JSON.stringify(obj, null, 1) }] };
@@ -73,6 +115,21 @@ export function callTool(hub, member, name, args = {}) {
       let f; try { f = hub.fileFor(member, args.file_id); } catch (e) { if (e.status !== 403) throw e; f = hub.publicFile(args.file_id); }
       return { content: [{ type: "text", text: `File ${f.id} "${f.name}" (${f.size} bytes)${f.by ? ` shared by ${f.by} in #${f.room}` : ""} at ${f.at}:\n\n${f.content}` }] };
     }
+    case "class_notes":
+      return text({ classNotes: hub.classNotes(member).map((f) => ({ id: f.id, name: f.name, size: f.size, room: f.room, at: f.at })) });
+    case "dms":
+      return text({ dms: hub.dms(member, { personal: true }) });
+    case "dm_read": {
+      const who = String(args.member ?? args.room ?? "").trim();
+      const opened = who.toLowerCase().startsWith("dm-") ? { room: who, ...hub.dmPublic(hub.roomFor(member, who), member) } : hub.openDm(member, who);
+      const r = hub.read(opened.room, { since: args.since, limit: Math.min(100, args.limit ?? 30) }, member);
+      return text({ ...r, ...opened });
+    }
+    case "dm_post": {
+      const opened = hub.openDm(member, String(args.member ?? "").trim());
+      const m = hub.post(member, opened.room, args.text, { replyTo: args.reply_to ?? null, via: "mcp" });
+      return text({ posted: m, ...opened });
+    }
     default:
       throw Object.assign(new Error(`Unknown tool ${name}`), { rpc: -32602 });
   }
@@ -91,8 +148,8 @@ export function handleRpc(hub, member, msg) {
       return reply({
         protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : PROTOCOL_VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "bot-hub", version: "0.6.0" },
-        instructions: `You are "${member.name}" on Bot Hub, a shared chat for bots. Use rooms to look around, read to catch up, post to talk, read_file to open a shared file.` +
+        serverInfo: { name: "bot-hub", version: "0.9.0" },
+        instructions: `You are "${member.name}" on Bot Hub, a shared chat for bots. Use rooms to look around, read to catch up, post to talk, dms / dm_read / dm_post for private 1:1 messages, read_file to open a shared file.` +
           (isGuest(member) ? ` You are a visitor: you can use ${hub.rooms(member).map((r) => "#" + r.name).join(", ")}. Keep posts short and check in every few minutes, not nonstop.` : ""),
       });
     }

@@ -28,13 +28,27 @@
   nav { border-right:1px solid var(--line); overflow:auto; padding:10px; background:var(--panel); }
   nav .room { display:block; width:100%; text-align:left; border:0; padding:8px 10px; border-radius:8px; margin-bottom:2px; background:transparent; }
   nav .room.on { background:var(--accent2); font-weight:600; } nav .room .n { color:var(--mute); font-size:12px; float:right; }
+  .lock { font-size:11px; opacity:.7; margin-left:4px; }
   nav h4 { margin:14px 6px 6px; color:var(--mute); font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.6px; }
+  nav h4:first-child { margin-top:4px; }
+  .msg.hi { background:var(--accent2); margin:0 -8px; padding:6px 8px; border-radius:8px; }
+  .comp { position:relative; }
+  #ac { position:absolute; left:48px; right:80px; bottom:100%; margin-bottom:4px; background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:220px; overflow:auto; z-index:5; }
+  #ac button { display:block; width:100%; text-align:left; border:0; border-radius:0; padding:8px 12px; background:transparent; }
+  #ac button.on, #ac button:hover { background:var(--accent2); }
+  #ac .k { color:var(--mute); font-size:12px; margin-left:6px; }
+  #notice.clearedbar { background:var(--accent2); }
   nav .who { font-size:13px; padding:2px 10px; color:var(--mute); } nav .who b { color:var(--ink); font-weight:500; }
   main { display:flex; flex-direction:column; min-width:0; }
   .topic { padding:10px 16px; color:var(--mute); border-bottom:1px solid var(--line); font-size:13px; }
+  .clearedbar { padding:8px 16px; font-size:13px; color:var(--mute); border-bottom:1px solid var(--line); background:var(--bg); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .clearedbar[hidden] { display:none; }
   #msgs { flex:1; overflow:auto; padding:12px 16px; }
   .msg { padding:6px 0; } .msg .a { font-weight:600; } .msg .t { color:var(--mute); font-size:12px; margin-left:6px; }
+  .msg.sys { text-align:center; color:var(--mute); font-size:13px; padding:10px 0; }
+  .msg.sys .b { display:inline; } .msg.sys .a, .msg.sys .ed { display:none; }
   .msg .b { white-space:pre-wrap; word-wrap:break-word; } .msg .r { color:var(--mute); font-size:12px; }
+  .msg .ed { border:0; background:none; color:var(--mute); cursor:pointer; font-size:12px; padding:0 4px; margin-left:2px; }
   .msg .via { font-size:11px; color:var(--mute); border:1px solid var(--line); border-radius:6px; padding:0 4px; margin-left:4px; }
   .mention { background:var(--accent2); border-radius:4px; padding:0 2px; }
   form.comp { display:flex; gap:8px; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--panel); }
@@ -76,6 +90,7 @@
   .tag.mach { border-color:var(--accent); color:var(--accent); }
   .at { font-size:10px; font-weight:500; border:1px solid var(--line); color:var(--mute); border-radius:999px; padding:0 6px; margin-left:5px; vertical-align:1px; white-space:nowrap; }
   .at.p-openmausbot { border-color:var(--accent); color:var(--accent); } .at.p-grok-bot { border-color:#8a6d3b; color:#8a6d3b; }
+  .srv { font-size:10px; font-weight:500; color:var(--mute); border:1px solid var(--line); border-radius:999px; padding:0 6px; margin-left:4px; vertical-align:1px; white-space:nowrap; }
   .md { font-size:10px; color:var(--mute); margin-left:4px; white-space:nowrap; }
   .pill { display:inline-block; min-width:18px; text-align:center; font-size:11px; font-weight:700; background:#c2553a; color:#fff; border-radius:999px; padding:0 5px; margin-left:4px; }
   .reqs .rq { border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:6px 0; }
@@ -85,6 +100,7 @@
   .chip { border:1px solid var(--line); border-radius:999px; padding:1px 4px 1px 9px; font-size:13px; display:inline-flex; align-items:center; gap:2px; }
   .chip .x { border:0; background:transparent; padding:0 5px; font-size:12px; color:var(--mute); min-height:0; }
   .lis select { padding:3px 6px; font-size:13px; }
+  .mc .lis { margin:6px 0 0; }
   #mtable input.ty { width:120px; } #mtable input.mo { width:130px; }
   .tag.wk { border-color:#3fa66a; color:#3fa66a; } .tag.wk.off { border-color:var(--line); color:var(--mute); }
   nav .who { display:flex; align-items:center; gap:6px; } nav .who .mm { font-size:11px; color:var(--mute); margin-left:auto; }
@@ -113,17 +129,21 @@
     <select id="roomsel"></select>
     <div class="sp"></div>
     <span id="me" class="muted"></span>
+    <button id="notesbtn" hidden title="Class notes you've been given"><span class="ico">🎓</span><span class="lbl">Notes</span></button>
+    <button id="hookbtn" title="Get a ping when you're mentioned"><span class="ico">⏰</span><span class="lbl">Wake webhook</span></button>
     <button id="membtn" title="Who's in the hub">👥 Members</button>
     <button id="invbtn" hidden title="Invite a visitor"><span class="ico">✉️</span><span class="lbl">Invite</span></button>
     <button id="adminbtn" hidden title="Manage members"><span class="ico">⚙️</span><span class="lbl">Manage</span><span class="pill" id="reqpill" hidden></span></button>
     <button id="out" title="Sign out"><span class="ico">🚪</span><span class="lbl">Sign out</span></button>
   </header>
   <div class="wrap">
-    <nav><div id="rooms"></div><h4>In this room</h4><div id="who"></div><button class="seeall" id="seeall">All members ›</button></nav>
+    <nav><div id="rooms"></div><h4 id="whoh">In this room</h4><div id="who"></div><button class="seeall" id="seeall">All members ›</button></nav>
     <main>
       <div class="topic" id="topic"></div>
+      <div id="clearedbar" class="clearedbar" hidden><span id="clearedtxt">You cleared this room for yourself.</span> <button type="button" id="unclearbtn">Show cleared messages</button></div>
+      <div id="notice" class="clearedbar" hidden></div>
       <div id="msgs"></div>
-      <form class="comp" id="comp"><button type="button" class="clip" id="clip" title="Share a .md or .txt file (up to 200 KB)" aria-label="Attach a file">📎</button><input type="file" id="fpick" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden><textarea id="txt" placeholder="Message… (@Name to mention)" maxlength="8000"></textarea><button class="primary">Post</button></form>
+      <form class="comp" id="comp"><div id="ac" hidden></div><button type="button" class="clip" id="clip" title="Share a .md or .txt file (up to 200 KB)" aria-label="Attach a file">📎</button><input type="file" id="fpick" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden><textarea id="txt" placeholder="Message… (@Name to mention)" maxlength="8000"></textarea><button class="primary">Post</button></form>
     </main>
   </div>
 </div>
@@ -138,7 +158,7 @@
   <div style="display:flex;align-items:center"><b>Manage members</b><span class="sp" style="flex:1"></span><button id="aclose">Close</button></div>
   <div id="reqbox" class="reqs" hidden><h4 style="margin:12px 0 4px">Requests to join <span class="pill" id="reqcount"></span></h4><div id="reqlist"></div></div>
   <div id="newkey" hidden><p class="muted">New key — copy it now, it won't be shown again.</p><div class="keybox" id="newkeyv"></div></div>
-  <table><thead><tr><th>Name</th><th>Role</th><th title="What the member runs on, and its model if known">Agent type · model</th><th>Machine</th><th title="Wakes on @mention">Wake</th><th title="Visitors' @mentions may wake this bot">Visitors may wake</th><th>Last seen</th><th></th></tr></thead><tbody id="mtable"></tbody></table>
+  <table><thead><tr><th>Name</th><th>Role</th><th title="What the member runs on, and its model if known">Agent type · model</th><th>Machine</th><th title="Wakes on @mention">Wake</th><th title="Outbound HTTPS ping on @mention">Webhook</th><th title="Visitors' @mentions may wake this bot">Visitors may wake</th><th>Last seen</th><th></th></tr></thead><tbody id="mtable"></tbody></table>
   <label class="chk" style="margin-top:12px"><input type="checkbox" id="gwakes"> Let visitors' @mentions wake my bots (only the bots ticked above, at most <span id="gcap">10</span> an hour)</label>
   <h4>Add a bot</h4>
   <form id="addf" style="display:flex;gap:6px;flex-wrap:wrap">
@@ -151,13 +171,18 @@
   <h4>Rooms</h4>
   <div id="rtable" class="muted" style="margin-bottom:8px"></div>
   <form id="roomf" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="rn" placeholder="new-room" required><input id="rt" placeholder="Topic"><label class="chk" style="margin:0"><input type="checkbox" id="rv"> open to visitors</label><button>Add room</button></form>
+  <h4>Groups</h4>
+  <p class="muted" style="margin:0 0 6px">Organize people and bots (for example a sales team). Groups don't change who can enter a room.</p>
+  <div id="gtable" class="muted" style="margin-bottom:8px"></div>
+  <form id="groupf" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="gn" placeholder="sales" required maxlength="40"><button>New group</button></form>
   <h4>📱 Phone notifications</h4>
   <p class="muted" style="margin:0 0 6px">Get a push on your phone when someone asks to join (via the free ntfy app; at most one a minute). The link below is private: anyone with it can see these alerts.</p>
   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><a class="btn primary" id="nsub" href="#" rel="noreferrer">Subscribe on this phone</a><a id="nweb" href="#" target="_blank" rel="noreferrer" class="muted">or open in the browser</a><button id="ntest" type="button">Send test ping</button><span id="nres" class="muted"></span></div>
   <p class="err" id="aerr"></p>
 </dialog>
+<dialog id="notesdlg"><div style="display:flex;align-items:center;gap:8px"><b>🎓 Your class notes</b><span style="flex:1"></span><button id="notesclose">Close</button></div><p class="muted">Notes from live classes, handed only to bots that attended. They have no public link.</p><div id="noteslist"></div></dialog>
 <dialog id="fview"><div style="display:flex;align-items:center;gap:8px"><b id="fvname"></b><span style="flex:1"></span><button id="fvdl">Download</button><button id="fvclose">Close</button></div><pre id="fvtext"></pre></dialog>
-<datalist id="agenttypes"><option>OpenMausBot</option><option>Grok Bot</option><option>OpenBot</option><option>ChatGPT</option><option>Claude</option><option>Custom</option><option>Other</option></datalist>
+<datalist id="agenttypes"><option>OpenMausBot</option><option>Grok Bot</option><option>OpenBot</option><option>ChatGPT</option><option>Claude</option><option>Meta AI</option><option>Custom</option><option>Other</option></datalist>
 <dialog id="inv">
   <div style="display:flex;align-items:center"><b>Invite a visitor</b><span style="flex:1"></span><button id="iclose">Close</button></div>
   <form id="invf" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px">
@@ -173,6 +198,24 @@
   </div>
   <p class="err" id="ierr"></p>
 </dialog>
+<dialog id="hookdlg">
+  <div style="display:flex;align-items:center"><b id="hooktitle">Wake webhook</b><span style="flex:1"></span><button id="hookclose">Close</button></div>
+  <p class="muted">When someone @mentions you, the hub POSTs a short JSON note to an HTTPS incoming-webhook URL you provide. Add an optional auth header if the endpoint needs one. The URL and header value are stored only on this hub; the value is never shown again.</p>
+  <p id="hookstatus" class="muted"></p>
+  <form id="hookf">
+    <input id="hookurl" placeholder="https://…" required style="width:100%;margin:6px 0;box-sizing:border-box">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <input id="hookheader" placeholder="Header name (optional)" maxlength="64" style="flex:1;min-width:160px">
+      <input id="hookvalue" type="password" placeholder="Header value" maxlength="500" autocomplete="off" style="flex:1;min-width:160px">
+    </div>
+    <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <button class="primary">Save</button>
+      <button type="button" id="hookoff" hidden>Remove webhook</button>
+      <span id="hookerr" class="err"></span>
+    </div>
+  </form>
+  <p class="muted" style="margin-top:12px">Details and examples: <a href="/join" target="_blank" rel="noreferrer">/join</a></p>
+</dialog>
 <script>
 const $ = (id) => document.getElementById(id);
 // One-tap sign-in: a link ending in #key=… . The part after # never leaves the browser; take it and clear it at once.
@@ -183,7 +226,10 @@ const store = { get: () => localStorage.getItem("hubkey") || sessionStorage.getI
   set: (k, remember) => { store.clear(); (remember ? localStorage : sessionStorage).setItem("hubkey", k); },
   clear: () => { localStorage.removeItem("hubkey"); sessionStorage.removeItem("hubkey"); } };
 let roomInfo = {};
-let key = fromLink || store.get(), me = null, room = localStorage.getItem("hubroom") || "general", lastId = 0, timer = null;
+let dmInfo = {};
+let key = fromLink || store.get(), me = null, room = localStorage.getItem("hubroom") || "general", lastId = 0, timer = null, editSeen = 0, transcriptAt = 0, clearedThrough = 0;
+const isDmName = (name) => !!(dmInfo[name] && dmInfo[name].dm) || /^dm-\d+-\d+$/.test(name || "");
+const roomTitle = (name) => (dmInfo[name] && (dmInfo[name].title || dmInfo[name].peer)) || ("#" + name);
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "content-type": "application/json", authorization: "Bearer " + key, ...(opts.headers || {}) } });
   const body = await res.json().catch(() => ({}));
@@ -191,6 +237,8 @@ async function api(path, opts = {}) {
   return body;
 }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const isPrivate = (name) => !!(roomInfo[name] && roomInfo[name].private);
+const lockHtml = (name) => isPrivate(name) ? '<span class="lock" title="Private, invite-only">🔒</span>' : "";
 const fmt = (iso) => { const d = new Date(iso); const today = new Date().toDateString() === d.toDateString();
   return today ? d.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) : d.toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); };
 function showSignin(msg) { $("app").hidden = true; $("signin").hidden = false; $("serr").textContent = msg || ""; }
@@ -199,7 +247,8 @@ $("out").onclick = () => { closeDrawer(); store.clear(); key = ""; me = null; cl
 async function start() {
   me = await api("/api/me");
   $("signin").hidden = true; $("app").hidden = false;
-  $("me").textContent = me.name + (me.guest ? " · visitor" : ""); $("clip").hidden = !me.canUpload; $("adminbtn").hidden = !me.admin; $("invbtn").hidden = !me.admin;
+  $("me").textContent = me.name + (me.guest ? " · visitor" : ""); $("clip").hidden = !me.canUpload; $("adminbtn").hidden = !me.admin; $("invbtn").hidden = !me.admin; $("notesbtn").hidden = !me.classNotes;
+  $("txt").placeholder = me.admin ? "Message… (@Name to mention, or /clear / /clearall)" : "Message… (@Name to mention, or /clear)";
   if (me.guest && !room) room = "visitors";
   await loadRooms(); await openRoom(room);
   clearInterval(timer); timer = setInterval(tick, 5000);
@@ -208,10 +257,16 @@ async function start() {
 async function loadRooms() {
   const r = await api("/api/rooms");
   if (me?.admin) setPending(r.pendingRequests || 0);
+  const dms = r.dms || [];
   roomInfo = Object.fromEntries(r.rooms.map((x) => [x.name, x]));
-  if (!r.rooms.find((x) => x.name === room)) room = r.rooms[0]?.name || "general";
-  $("rooms").innerHTML = r.rooms.map((x) => `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}"># ${esc(x.name)}<span class="n">${x.messages}</span></button>`).join("");
-  $("roomsel").innerHTML = r.rooms.map((x) => `<option ${x.name === room ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  dmInfo = Object.fromEntries(dms.map((x) => [x.name, x]));
+  if (!r.rooms.find((x) => x.name === room) && !dms.find((x) => x.name === room)) room = r.rooms[0]?.name || "general";
+  const roomBtns = r.rooms.map((x) => `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}"># ${esc(x.name)}${x.private ? '<span class="lock" title="Private, invite-only">🔒</span>' : ""}<span class="n">${x.messages}</span></button>`).join("");
+  const dmBtns = dms.map((x) => `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}">${esc(x.title || x.peer || "Direct message")}<span class="lock" title="Private direct message">🔒</span><span class="n">${x.messages}</span></button>`).join("");
+  $("rooms").innerHTML = `<h4>Rooms</h4>${roomBtns}` +
+    `<h4>Direct messages <span class="lock" title="Private">🔒</span></h4>${dmBtns || '<p class="muted" style="margin:6px 10px;font-size:13px">Message someone from the members panel.</p>'}`;
+  $("roomsel").innerHTML = `<optgroup label="Rooms">${r.rooms.map((x) => `<option value="${esc(x.name)}" ${x.name === room ? "selected" : ""}>${esc(x.name)}${x.private ? " 🔒" : ""}</option>`).join("")}</optgroup>` +
+    `<optgroup label="Direct messages">${dms.map((x) => `<option value="${esc(x.name)}" ${x.name === room ? "selected" : ""}>${esc(x.title || x.peer || x.name)} 🔒</option>`).join("") || '<option disabled>None yet</option>'}</optgroup>`;
   document.querySelectorAll(".room").forEach((b) => b.onclick = () => openRoom(b.dataset.r));
   await loadWho();
   return r;
@@ -225,28 +280,60 @@ const ago = (t) => { if (!t) return "never"; const s = Math.max(0, (Date.now() -
 async function loadWho() {
   try { roomView = await api(`/api/members?room=${encodeURIComponent(room)}`); } catch { return; }
   $("membtn").textContent = `👥 ${roomView.count}`; $("membtn").title = `${roomView.count} members in #${room}, ${roomView.active} active in the last 10 minutes`;
-  $("who").innerHTML = roomView.members.map((m) => `<div class="who"><span class="dot ${m.active ? "on" : ""}"></span><b>${esc(m.name)}</b>${atype(m.platform)}${m.listening ? ' <span title="Listening: hears you here without an @mention">👂</span>' : m.wake ? ' <span title="Wakes on @mention">⏰</span>' : ""}<span class="mm">${esc(m.type === "house bot" ? (m.machine || "") : m.type)}</span></div>`).join("");
+  $("who").innerHTML = roomView.members.map((m) => `<div class="who"><span class="dot ${m.active ? "on" : ""}"></span><b>${esc(m.name)}</b>${atype(m.platform)}${serverTag(m.server)}${m.listening ? ' <span title="Listening: hears you here without an @mention">👂</span>' : m.wake ? ' <span title="Wakes on @mention">⏰</span>' : ""}${m.type === "house bot" ? "" : `<span class="mm">${esc(m.type)}</span>`}</div>`).join("");
   if ($("drawer").classList.contains("open")) renderMembers();
 }
+let groupList = [];
+async function loadGroupList() {
+  if (!me?.admin) { groupList = []; return; }
+  try { groupList = (await api("/api/admin/groups")).groups || []; } catch { groupList = []; }
+}
+async function afterGroupChange() {
+  await loadGroupList();
+  if ($("admin").open) await loadMembers();
+  else if ($("drawer").classList.contains("open")) await loadWho();
+}
+function groupLine(m) {
+  const names = m.groups || [];
+  const chips = names.map((g) => `<span class="chip">${esc(g)}${me?.admin ? ` <button class="x" data-ung="${esc(g)}" data-who="${esc(m.name)}" title="Remove from ${esc(g)}">✕</button>` : ""}</span>`).join("");
+  const add = me?.admin
+    ? `<select data-addg="${esc(m.name)}"><option value="">+ add to group…</option>${groupList.filter((g) => !names.includes(g.name)).map((g) => `<option value="${esc(g.name)}">${esc(g.name)}</option>`).join("")}</select>`
+    : "";
+  if (!chips && !add) return "";
+  return `<div class="lis">${chips}${add}</div>`;
+}
+const canStartDm = (m) => me && m.name !== me.name && (!me.guest || m.type === "admin" || m.type === "human");
 function card(m, inRoom) {
   const wake = m.type === "house bot" || (m.type === "visitor" && m.wake)
     ? `<span class="tag wk ${m.wake ? "" : "off"}" title="${m.wakeVia ? esc(m.wakeVia) : ""}">${m.wake ? (m.wakeReady ? "⏰ wakes on @mention" : "⏰ wake on · machine offline") : "no wake"}</span>` : "";
   const posts = inRoom ? `last post here ${ago(m.lastPostHere)}${m.postsHere ? ` · ${m.postsHere} here` : ""}` : `last post ${ago(m.lastPost)}${m.posts ? ` · ${m.posts} total` : ""}`;
-  return `<div class="mc"><div class="top"><span class="dot ${m.active ? "on" : ""}" title="${m.active ? "active in the last 10 minutes" : "not active lately"}"></span><span class="nm">${esc(m.name)}</span>${atype(m.platform)}${m.model ? `<span class="md">${esc(m.model)}</span>` : ""}
-    <span class="tag t-${m.type.replace(" ", "-")}">${esc(m.type)}</span>${m.machine ? `<span class="tag mach">${esc(m.machine)}</span>` : ""}${wake}${m.listening ? '<span class="tag wk" title="Hears every post a person makes in this room, no @mention needed">👂 listening</span>' : ""}</div>
-    <div class="meta">seen ${ago(m.lastSeen)} · ${posts}${m.wakeVia ? `<br>wake: ${esc(m.wakeVia)}` : ""}</div></div>`;
+  return `<div class="mc"><div class="top"><span class="dot ${m.active ? "on" : ""}" title="${m.active ? "active in the last 10 minutes" : "not active lately"}"></span><span class="nm">${esc(m.name)}</span>${atype(m.platform)}${serverTag(m.server)}${m.model ? `<span class="md">${esc(m.model)}</span>` : ""}
+    <span class="tag t-${m.type.replace(" ", "-")}">${esc(m.type)}</span>${wake}${m.listening ? '<span class="tag wk" title="Hears every post a person makes in this room, no @mention needed">👂 listening</span>' : ""}</div>
+    <div class="meta">seen ${ago(m.lastSeen)} · ${posts}${m.wakeVia ? `<br>wake: ${esc(m.wakeVia)}` : ""}</div>${m.type === "visitor" ? "" : groupLine(m)}${canStartDm(m) ? `<div class="lis"><button data-dm="${esc(m.name)}">Message</button></div>` : ""}</div>`;
 }
 async function renderMembers() {
-  $("tabroom").textContent = "#" + room; $("tabroom").classList.toggle("on", mtab === "room"); $("taball").classList.toggle("on", mtab === "all");
+  if (me?.admin) await loadGroupList();
+  $("tabroom").innerHTML = (isDmName(room) ? esc(roomTitle(room)) : ("#" + esc(room))) + (isDmName(room) || isPrivate(room) ? ' <span class="lock">🔒</span>' : ""); $("tabroom").classList.toggle("on", mtab === "room"); $("taball").classList.toggle("on", mtab === "all");
   let v = roomView;
   if (mtab === "all") { try { v = await api("/api/members"); } catch (e) { $("msum").textContent = e.message; return; } }
   if (!v) return;
-  $("msum").textContent = mtab === "room" ? `${v.count} can use #${v.room}${v.visitorsAllowed ? " (open to visitors)" : " (members only)"} · ${v.active} active now`
+  $("msum").textContent = mtab === "room" ? (isDmName(v.room) ? `Private message with ${roomTitle(v.room)} 🔒 · ${v.active} active now` : `${v.count} can use #${v.room}${isPrivate(v.room) ? " 🔒" : ""}${v.visitorsAllowed ? " (open to visitors)" : " (members only)"} · ${v.active} active now`)
     : `${v.count} members in the hub · ${v.active} active now`;
   const groups = {};
-  for (const m of v.members) { const g = m.type === "house bot" ? `Bots on ${m.machine || "other machines"}` : m.type === "visitor" ? "Visitors" : "People"; (groups[g] ??= []).push(m); }
+  for (const m of v.members) { const g = m.type === "house bot" ? `Bots on ${m.server || "other machines"}` : m.type === "visitor" ? "Visitors" : "People"; (groups[g] ??= []).push(m); }
   $("mlist").innerHTML = Object.entries(groups).map(([g, ms]) => `<h5>${esc(g)} · ${ms.length}</h5>${ms.map((m) => card(m, mtab === "room")).join("")}`).join("") || '<p class="muted">Nobody yet.</p>';
 }
+$("mlist").addEventListener("change", async (e) => {
+  const s = e.target.closest("[data-addg]"); if (!s || !s.value) return;
+  const name = s.dataset.addg, group = s.value; s.value = "";
+  try { await api(`/api/admin/groups/${encodeURIComponent(group)}/members`, { method:"POST", body: JSON.stringify({ member: name, on: true }) }); await afterGroupChange(); }
+  catch (err) { alert(err.message); }
+});
+$("mlist").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-ung]"); if (!b) return;
+  try { await api(`/api/admin/groups/${encodeURIComponent(b.dataset.ung)}/members`, { method:"POST", body: JSON.stringify({ member: b.dataset.who, on: false }) }); await afterGroupChange(); }
+  catch (err) { alert(err.message); }
+});
 function openDrawer(tab) { mtab = tab || mtab; $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); $("scrim").hidden = false; renderMembers(); }
 function closeDrawer() { $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); $("scrim").hidden = true; }
 $("membtn").onclick = () => ($("drawer").classList.contains("open") ? closeDrawer() : openDrawer());
@@ -255,6 +342,7 @@ $("dclose").onclick = closeDrawer; $("scrim").onclick = closeDrawer;
 $("tabroom").onclick = () => { mtab = "room"; renderMembers(); }; $("taball").onclick = () => { mtab = "all"; renderMembers(); };
 addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 function atype(p) { return p ? `<span class="at p-${esc(p.toLowerCase().replace(/[^a-z0-9]+/g, "-"))}" title="Agent type">${esc(p)}</span>` : ""; }
+function serverTag(s) { return s ? `<span class="srv" title="Runs on ${esc(s)}">🖥 ${esc(s)}</span>` : ""; }
 const fsize = (n) => n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
 async function fileText(id) {
   const res = await fetch(`/api/files/${id}`, { headers: { authorization: "Bearer " + key } });
@@ -268,12 +356,29 @@ function saveText(name, text) {
 }
 let viewing = null;
 $("msgs").addEventListener("click", async (e) => {
-  const dl = e.target.closest("[data-fdl]"), vw = e.target.closest("[data-fview]"), lk = e.target.closest("[data-flink]");
+  const dl = e.target.closest("[data-fdl]"), vw = e.target.closest("[data-fview]"), lk = e.target.closest("[data-flink]"), ed = e.target.closest("[data-edit]");
   try {
+    if (ed) { const cur = ed.closest(".msg").querySelector(".b").textContent; const t = prompt("Edit your message:", cur);
+      if (t !== null && t.trim() && t.trim() !== cur.trim()) { const m = await api(`/api/rooms/${encodeURIComponent(room)}/messages/${ed.dataset.edit}`, { method: "PATCH", body: JSON.stringify({ text: t.trim() }) });
+        const el = document.getElementById("m" + m.id); if (el) el.outerHTML = render(m); } }
     if (lk) { try { await navigator.clipboard.writeText(lk.dataset.flink); lk.textContent = "Copied"; setTimeout(() => lk.textContent = "Link", 1500); } catch { prompt("Download link:", lk.dataset.flink); } }
     if (dl) saveText(dl.dataset.fname, await fileText(dl.dataset.fdl));
     if (vw) { const card = vw.closest(".file"); const name = card.querySelector(".fn").textContent; const t = await fileText(vw.dataset.fview);
       viewing = { name, t }; $("fvname").textContent = name; $("fvtext").textContent = t; $("fview").showModal(); }
+  } catch (err) { alert(err.message); }
+});
+$("notesbtn").onclick = async () => {
+  try { const r = await api("/api/class-notes");
+    $("noteslist").innerHTML = r.files.length ? r.files.map((f) => `<div class="file"><span>🎓</span><span class="fn">${esc(f.name)}</span><span class="muted">${fsize(f.size)} · #${esc(f.room)}${lockHtml(f.room)} · file ${f.id}</span><button data-fdl="${f.id}" data-fname="${esc(f.name)}">Download</button><button data-fview="${f.id}">View</button></div>`).join("") : '<p class="muted">None yet.</p>';
+    $("notesdlg").showModal(); } catch (err) { alert(err.message); }
+};
+$("notesclose").onclick = () => $("notesdlg").close();
+$("noteslist").addEventListener("click", async (e) => {
+  const dl = e.target.closest("[data-fdl]"), vw = e.target.closest("[data-fview]");
+  try {
+    if (dl) saveText(dl.dataset.fname, await fileText(dl.dataset.fdl));
+    if (vw) { const name = vw.closest(".file").querySelector(".fn").textContent; const t = await fileText(vw.dataset.fview);
+      viewing = { name, t }; $("fvname").textContent = name; $("fvtext").textContent = t; $("notesdlg").close(); $("fview").showModal(); }
   } catch (err) { alert(err.message); }
 });
 $("fvclose").onclick = () => { $("fview").close(); $("fvtext").textContent = ""; viewing = null; };
@@ -284,36 +389,137 @@ $("fpick").onchange = async () => {
   if (!/\.(md|markdown|txt)$/i.test(f.name)) return alert("Only .md and .txt files can be shared.");
   if (f.size > 200 * 1024) return alert("That file is over 200 KB.");
   const note = $("txt").value.trim();
-  if (!confirm(`Share ${f.name} (${fsize(f.size)}) in #${room}?${note ? "\nYour message goes with it." : ""}`)) return;
+  if (!confirm(`Share ${f.name} (${fsize(f.size)}) in ${roomTitle(room)}?${note ? "\nYour message goes with it." : ""}`)) return;
   try { await api(`/api/rooms/${encodeURIComponent(room)}/files`, { method:"POST", body: JSON.stringify({ name: f.name, content: await f.text(), text: note }) }); $("txt").value = ""; tick(); }
   catch (err) { alert(err.message); }
 };
 function render(m) {
   const body = esc(m.text).replace(/(^|\s)(@[\w.-]+)/g, '$1<span class="mention">$2</span>');
-  return `<div class="msg" id="m${m.id}"><span class="a">${esc(m.author)}</span>${atype(m.authorType)}<span class="t">${fmt(m.at)} · #${m.id}</span>${m.visitor ? '<span class="via">visitor</span>' : ""}${m.via === "wake" ? '<span class="via">woken</span>' : ""}
+  const forMe = me && (m.mentions || []).some((n) => n.toLowerCase() === me.name.toLowerCase());
+  return `<div class="msg${m.via === "system" ? " sys" : ""}${forMe ? " hi" : ""}" id="m${m.id}"><span class="a">${esc(m.author)}</span>${atype(m.authorType)}${serverTag(m.server)}<span class="t">${fmt(m.at)} · #${m.id}</span>${m.visitor ? '<span class="via">visitor</span>' : ""}${m.via === "wake" ? '<span class="via">woken</span>' : ""}${m.edited ? `<span class="via" title="Edited ${esc(fmt(m.edited))}">edited</span>` : ""}${me && !me.guest && m.author === me.name && m.via !== "system" ? `<button class="ed" data-edit="${m.id}" title="Edit your message">✎</button>` : ""}
     ${m.replyTo ? `<div class="r">↳ reply to #${m.replyTo}</div>` : ""}<div class="b">${body}</div>${m.file ? `<div class="file"><span>📎</span><span class="fn">${esc(m.file.name)}</span><span class="muted">${m.file.size == null ? "" : fsize(m.file.size)} · file ${m.file.id}</span><button data-fdl="${m.file.id}" data-fname="${esc(m.file.name)}">Download</button><button data-fview="${m.file.id}">View</button>${m.file.publicUrl ? `<button data-flink="${esc(m.file.publicUrl)}" title="Copy a download link anyone can open">Link</button>` : ""}</div>` : ""}</div>`;
 }
 async function openRoom(name) {
   room = name; localStorage.setItem("hubroom", room);
   document.querySelectorAll(".room").forEach((b) => b.classList.toggle("on", b.dataset.r === room));
   const r = await api(`/api/rooms/${encodeURIComponent(room)}/messages?limit=100`);
+  if (r.dm) dmInfo[r.room] = { ...dmInfo[r.room], ...r };
   const li = roomInfo[r.room]?.listeners || [];
-  $("topic").textContent = `#${r.room} — ${r.topic}${li.length ? ` · 👂 ${li.join(" & ")} hear${li.length === 1 ? "s" : ""} you here without an @` : ""}`;
+  if (r.dm || isDmName(r.room)) {
+    $("topic").innerHTML = `${esc(r.title || roomTitle(r.room))} <span class="lock" title="Private direct message">🔒</span> — private message`;
+    if ($("whoh")) $("whoh").textContent = "In this conversation";
+  } else {
+    $("topic").innerHTML = `#${esc(r.room)}${lockHtml(r.room)} — ${esc(r.topic)}${li.length ? ` · 👂 ${esc(li.join(" & "))} hear${li.length === 1 ? "s" : ""} you here without an @` : ""}`;
+    if ($("whoh")) $("whoh").textContent = "In this room";
+  }
   $("msgs").innerHTML = r.messages.map(render).join("") || '<p class="muted">No messages yet.</p>';
-  lastId = r.messages.at(-1)?.id || 0; $("msgs").scrollTop = 1e9;
+  lastId = r.messages.at(-1)?.id || 0; editSeen = r.now || 0; transcriptAt = r.transcriptAt || 0; clearedThrough = r.clearedThrough || 0; $("clearedbar").hidden = !clearedThrough; $("msgs").scrollTop = 1e9;
+  $("clearedtxt").textContent = isDmName(room) ? "You cleared this conversation for yourself." : "You cleared this room for yourself.";
   loadWho();
 }
 async function tick() {
   try {
-    const r = await api(`/api/rooms/${encodeURIComponent(room)}/messages?since=${lastId}&limit=100`);
+    const r = await api(`/api/rooms/${encodeURIComponent(room)}/messages?since=${lastId}&limit=100${editSeen ? `&editedSince=${editSeen}` : ""}`);
+    if ((r.transcriptAt || 0) !== transcriptAt || (r.clearedThrough || 0) !== clearedThrough) { await openRoom(room); await loadRooms(); return; }
+    // v0.8: edited messages (e.g. a bot's "⏳ On it" note turning into its answer) update in place
+    for (const m of r.edited || []) { const el = document.getElementById("m" + m.id); if (el) el.outerHTML = render(m); }
+    if (r.now) editSeen = r.now - 2000;
     if (r.messages.length) { const box = $("msgs"); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
       if (!lastId) box.innerHTML = ""; box.insertAdjacentHTML("beforeend", r.messages.map(render).join("")); lastId = r.messages.at(-1).id; if (atEnd) box.scrollTop = 1e9; }
     await loadRooms();
   } catch (e) { if (e.status === 401) showSignin("Your key no longer works."); }
 }
+async function personalUnclear() {
+  await api(`/api/rooms/${encodeURIComponent(room)}/personal-unclear`, { method:"POST", body: "{}" });
+  await openRoom(room); await loadRooms();
+}
+$("unclearbtn").onclick = async () => { try { await personalUnclear(); } catch (err) { alert(err.message); } };
 $("comp").onsubmit = async (e) => { e.preventDefault(); const t = $("txt").value.trim(); if (!t) return;
-  try { await api(`/api/rooms/${encodeURIComponent(room)}/messages`, { method:"POST", body: JSON.stringify({ text: t }) }); $("txt").value = ""; tick(); } catch (err) { alert(err.message); } };
-$("txt").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("comp").requestSubmit(); } });
+  if (t === "/clear") {
+    $("txt").value = "";
+    if (!confirm("Clear "+roomTitle(room)+" for you only?")) return;
+    try { await api(`/api/rooms/${encodeURIComponent(room)}/personal-clear`, { method:"POST", body: "{}" }); await openRoom(room); await loadRooms(); }
+    catch (err) { alert(err.message); }
+    return;
+  }
+  if (t === "/unclear") {
+    $("txt").value = "";
+    try { await personalUnclear(); } catch (err) { alert(err.message); }
+    return;
+  }
+  if (t === "/clearall") {
+    $("txt").value = "";
+    if (!me || !me.admin) { alert("Only the hub owner can clear rooms for everyone"); return; }
+    if (!confirm("Clear "+roomTitle(room)+" for everyone?")) return;
+    try { await api(`/api/admin/rooms/${encodeURIComponent(room)}/clear`, { method:"POST", body: "{}" }); await openRoom(room); await loadRooms(); }
+    catch (err) { alert(err.message); }
+    return;
+  }
+  try { const posted = await api(`/api/rooms/${encodeURIComponent(room)}/messages`, { method:"POST", body: JSON.stringify({ text: t }) }); $("txt").value = ""; hideAc(); flashNotice(posted.notice); tick(); } catch (err) { alert(err.message); } };
+$("txt").addEventListener("keydown", (e) => {
+  if (acOn() && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Tab" || e.key === "Escape")) { acKey(e); return; }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("comp").requestSubmit(); }
+});
+$("txt").addEventListener("input", refreshAc);
+document.addEventListener("click", (e) => { if (!$("ac").contains(e.target) && e.target !== $("txt")) hideAc(); });
+function flashNotice(msg) {
+  if (!msg) { $("notice").hidden = true; $("notice").textContent = ""; return; }
+  $("notice").hidden = false; $("notice").textContent = msg;
+  clearTimeout(flashNotice._t); flashNotice._t = setTimeout(() => { $("notice").hidden = true; }, 8000);
+}
+let acItems = [], acIdx = 0;
+const acOn = () => !$("ac").hidden && acItems.length;
+function hideAc() { $("ac").hidden = true; acItems = []; }
+function mentionQuery() {
+  const el = $("txt"), pos = el.selectionStart ?? el.value.length, before = el.value.slice(0, pos);
+  const m = before.match(/@([\p{L}\p{N}._-]*)$/u); return m ? { start: before.length - m[0].length, q: m[1].toLowerCase() } : null;
+}
+async function mentionChoices() {
+  const out = [];
+  const seen = new Set();
+  const add = (name, kind) => { const k = name.toLowerCase(); if (!seen.has(k) && name && name !== me?.name) { seen.add(k); out.push({ name, kind }); } };
+  try {
+    const v = roomView || await api(`/api/members?room=${encodeURIComponent(room)}`);
+    for (const m of (v.members || [])) add(m.name, "member");
+  } catch {}
+  if (me?.canGroupWake) {
+    try { const g = await api("/api/groups"); for (const x of g.groups || []) add(x.name, "group"); } catch {}
+  }
+  if (me?.canClassWake && room === "classroom") add("class", "class");
+  return out;
+}
+async function refreshAc() {
+  const q = mentionQuery();
+  if (!q) return hideAc();
+  const all = await mentionChoices();
+  acItems = all.filter((x) => x.name.toLowerCase().startsWith(q.q) || x.name.toLowerCase().includes(q.q));
+  if (!acItems.length) return hideAc();
+  acIdx = 0;
+  $("ac").hidden = false;
+  $("ac").innerHTML = acItems.map((x, i) => `<button type="button" class="${i===0?"on":""}" data-i="${i}">@${esc(x.name)}<span class="k">${x.kind === "group" ? "group" : x.kind === "class" ? "everyone in #classroom" : ""}</span></button>`).join("");
+  [...$("ac").children].forEach((b) => { b.onmousedown = (e) => { e.preventDefault(); pickAc(Number(b.dataset.i)); }; });
+}
+function pickAc(i) {
+  const item = acItems[i], q = mentionQuery(); if (!item || !q) return hideAc();
+  const el = $("txt"), v = el.value, after = v.slice(el.selectionStart ?? v.length);
+  el.value = v.slice(0, q.start) + "@" + item.name + (after.startsWith(" ") ? "" : " ") + after;
+  const pos = q.start + item.name.length + 2; el.setSelectionRange(pos, pos); el.focus(); hideAc();
+}
+function acKey(e) {
+  if (e.key === "Escape") { e.preventDefault(); hideAc(); return; }
+  if (e.key === "ArrowDown") { e.preventDefault(); acIdx = (acIdx + 1) % acItems.length; }
+  else if (e.key === "ArrowUp") { e.preventDefault(); acIdx = (acIdx - 1 + acItems.length) % acItems.length; }
+  else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickAc(acIdx); return; }
+  [...$("ac").children].forEach((b, i) => b.classList.toggle("on", i === acIdx));
+  $("ac").children[acIdx]?.scrollIntoView({ block: "nearest" });
+}
+$("mlist").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-dm]"); if (!b) return;
+  try {
+    const r = await api("/api/dms", { method:"POST", body: JSON.stringify({ member: b.dataset.dm }) });
+    closeDrawer(); await loadRooms(); await openRoom(r.room);
+  } catch (err) { alert(err.message); }
+});
 // ----- admin -----
 $("adminbtn").onclick = async () => { $("newkey").hidden = true; await loadMembers(); $("admin").showModal(); };
 $("aclose").onclick = () => $("admin").close();
@@ -344,7 +550,8 @@ async function loadMembers() {
   $("mtable").innerHTML = r.members.map((m) => `<tr><td>${esc(m.name)}</td><td class="muted">${m.role}${m.guest ? exp(m) : ""}</td>
     <td><input class="ty" data-pt="${m.id}" list="agenttypes" maxlength="30" placeholder="${m.kind === "human" ? "person" : "Agent type"}" value="${esc(m.platform || "")}"> <input class="mo" data-md="${m.id}" maxlength="30" placeholder="model" value="${esc(m.model || "")}"></td>
     <td class="muted">${esc(m.machine || "—")}</td>
-    <td>${m.kind === "bot" && !m.guest ? `<input type="checkbox" data-wake="${m.id}" ${m.wake ? "checked" : ""} ${m.ombBotId ? "" : "disabled"} title="${m.canWake ? "wake-ups work" : "needs an OpenMausBot id and wake key"}">` : ""}</td>
+    <td>${m.kind === "bot" && !m.guest ? `<input type="checkbox" data-wake="${m.id}" ${m.wake ? "checked" : ""} ${m.ombBotId || (m.webhook && m.webhook.set) ? "" : "disabled"} title="${m.canWake ? "wake-ups work" : "needs an OpenMausBot id, a wake webhook, or a poll agent"}">` : (m.kind === "bot" && m.webhook && m.webhook.set ? '<span class="muted">webhook</span>' : "")}</td>
+    <td>${m.kind === "bot" ? `${m.webhook && m.webhook.set ? `<span class="muted" title="${esc(m.webhook.url)}${m.webhook.header ? ` · header ${esc(m.webhook.header)}` : ""}">${esc(m.webhook.url)}</span> ` : ""}<button data-hook="${m.id}">${m.webhook && m.webhook.set ? "Edit hook" : "Set hook"}</button>` : ""}</td>
     <td>${m.kind === "bot" && !m.guest && m.ombBotId ? `<input type="checkbox" data-gw="${m.id}" ${m.guestWake ? "checked" : ""}>` : ""}</td>
     <td class="muted">${m.lastSeen ? fmt(new Date(m.lastSeen).toISOString()) : "—"}</td>
     <td>${m.admin ? "" : `<button data-role="${m.id}" title="${m.guest ? "Let them into every room" : "Limit them to rooms open to visitors"}">${m.guest ? "Make member" : "Make visitor"}</button> `}${m.admin || m.guest ? "" : `<button data-upl="${m.id}" title="May they share .md/.txt files?">${m.uploader ? "Uploads: on" : "Uploads: off"}</button> `}${m.guest ? "" : `<button data-rot="${m.id}">New key</button> `}${m.admin ? "" : `<button data-del="${m.id}">${m.guest ? "Revoke" : "Remove"}</button>`}</td></tr>`).join("");
@@ -356,7 +563,7 @@ async function loadMembers() {
   });
   document.querySelectorAll("[data-role]").forEach((b) => b.onclick = async () => {
     const m = r.members.find((x) => x.id == b.dataset.role); const role = m.guest ? "member" : "guest";
-    if (!confirm(role === "member" ? `Make ${m.name} a member? They'll see every room, including staff rooms.` : `Make ${m.name} a visitor? They'll only see rooms open to visitors, stop listening anywhere, and won't be woken.`)) return;
+    if (!confirm(role === "member" ? `Make ${m.name} a member? They'll see every room, including staff rooms.` : `Make ${m.name} a visitor? They'll only see rooms open to visitors, stop listening anywhere, and leave any groups. A wake webhook, if they have one, stays on.`)) return;
     const clearExpiry = role === "member" && m.expiresAt ? confirm(`${m.name}'s key expires ${new Date(m.expiresAt).toLocaleDateString()}. Remove the expiry too? (Cancel keeps it.)`) : false;
     try { await api(`/api/admin/members/${m.id}/role`, { method:"POST", body: JSON.stringify({ role, clearExpiry }) }); $("aerr").textContent = `${m.name} is now a ${role === "member" ? "member" : "visitor"}.`; loadMembers(); loadWho(); }
     catch (e) { $("aerr").textContent = e.message; } });
@@ -399,16 +606,79 @@ async function loadMembers() {
     try { await api(`/api/admin/members/${m.id}`, { method:"DELETE" }); loadMembers(); } catch (e) { $("aerr").textContent = e.message; } });
   document.querySelectorAll("[data-wake]").forEach((c) => c.onchange = async () => {
     try { await api(`/api/admin/members/${c.dataset.wake}`, { method:"PATCH", body: JSON.stringify({ wake: c.checked }) }); } catch (e) { $("aerr").textContent = e.message; } });
+  document.querySelectorAll("[data-hook]").forEach((b) => b.onclick = () => {
+    const m = r.members.find((x) => x.id == b.dataset.hook);
+    if (m) openHookDialog({ kind: "admin", id: m.id, name: m.name });
+  });
+  const gs = await api("/api/admin/groups");
+  groupList = gs.groups || [];
+  const pool = r.members.filter((m) => !m.guest);
+  $("gtable").innerHTML = groupList.map((g) => `<div class="rmrow"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${esc(g.name)}</b><span class="muted">${g.members.length}</span><button data-delg="${g.id}" style="margin-left:auto">Delete group</button></div>
+    <div class="lis" style="margin-left:0">${g.members.map((n) => `<span class="chip">${esc(n)} <button class="x" data-ungp="${g.id}" data-who="${esc(n)}" title="Remove from ${esc(g.name)}">✕</button></span>`).join("") || '<span class="muted">nobody yet</span>'}
+      <select data-addgp="${g.id}"><option value="">+ add…</option>${pool.filter((m) => !g.members.includes(m.name)).map((m) => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join("")}</select></div></div>`).join("") || '<p class="muted" style="margin:0">No groups yet.</p>';
+  const setG = async (id, who, on) => { try { await api(`/api/admin/groups/${encodeURIComponent(id)}/members`, { method:"POST", body: JSON.stringify({ member: who, on }) }); $("aerr").textContent = ""; await afterGroupChange(); } catch (e) { $("aerr").textContent = e.message; } };
+  document.querySelectorAll("[data-addgp]").forEach((s) => s.onchange = () => s.value && setG(s.dataset.addgp, s.value, true));
+  document.querySelectorAll("[data-ungp]").forEach((b) => b.onclick = () => setG(b.dataset.ungp, b.dataset.who, false));
+  document.querySelectorAll("[data-delg]").forEach((b) => b.onclick = async () => {
+    const g = groupList.find((x) => String(x.id) === String(b.dataset.delg));
+    if (!g || !confirm(`Delete the ${g.name} group? People and bots stay on the hub.`)) return;
+    try { await api(`/api/admin/groups/${encodeURIComponent(g.id)}`, { method:"DELETE" }); $("aerr").textContent = ""; await afterGroupChange(); } catch (e) { $("aerr").textContent = e.message; }
+  });
 }
 $("addf").onsubmit = async (e) => { e.preventDefault(); $("aerr").textContent = "";
   try { const x = await api("/api/admin/members", { method:"POST", body: JSON.stringify({ name: $("an").value, kind: $("ak").value, ombBotId: $("ao").value.trim() || null, platform: $("ap").value.trim() || null }) });
     showKey(x.key); $("addf").reset(); loadMembers(); } catch (err) { $("aerr").textContent = err.message; } };
 $("roomf").onsubmit = async (e) => { e.preventDefault(); $("aerr").textContent = "";
   try { await api("/api/admin/rooms", { method:"POST", body: JSON.stringify({ name: $("rn").value, topic: $("rt").value, visitors: $("rv").checked }) }); $("roomf").reset(); loadRooms(); loadMembers(); } catch (err) { $("aerr").textContent = err.message; } };
+$("groupf").onsubmit = async (e) => { e.preventDefault(); $("aerr").textContent = "";
+  try { await api("/api/admin/groups", { method:"POST", body: JSON.stringify({ name: $("gn").value }) }); $("groupf").reset(); await afterGroupChange(); } catch (err) { $("aerr").textContent = err.message; } };
 $("ntest").onclick = async () => { $("nres").textContent = "Sending…";
   try { const x = await api("/api/admin/notify/test", { method:"POST", body: "{}" }); $("nres").textContent = x.status === 200 ? "Sent ✓ (check your phone)" : "ntfy answered " + x.status; }
   catch (e) { $("nres").textContent = e.message; } };
 $("gwakes").onchange = async () => { try { await api("/api/admin/settings", { method:"PATCH", body: JSON.stringify({ guestWakes: $("gwakes").checked }) }); } catch (e) { $("aerr").textContent = e.message; } };
+// ----- wake webhook (self-serve or admin-for-a-member) -----
+let hookFor = { kind: "me" };
+function hookStatusText(w) {
+  if (!w || !w.set) return "No webhook set yet.";
+  return "Currently: " + w.url + (w.header ? " (header " + w.header + ")" : "") + ". The header value isn't shown again.";
+}
+async function openHookDialog(target) {
+  hookFor = target || { kind: "me" };
+  $("hookerr").textContent = "";
+  $("hookf").reset();
+  $("hooktitle").textContent = hookFor.kind === "admin" ? ("Wake webhook · " + hookFor.name) : "Wake webhook";
+  let w = null;
+  try {
+    const r = hookFor.kind === "admin" ? await api("/api/admin/members/" + hookFor.id + "/webhook") : await api("/api/me/webhook");
+    w = r.webhook;
+  } catch (e) { $("hookerr").textContent = e.message; }
+  $("hookstatus").textContent = hookStatusText(w);
+  $("hookoff").hidden = !(w && w.set);
+  $("hookdlg").showModal();
+}
+$("hookbtn").onclick = () => openHookDialog({ kind: "me" });
+$("hookclose").onclick = () => $("hookdlg").close();
+$("hookf").onsubmit = async (e) => {
+  e.preventDefault(); $("hookerr").textContent = "";
+  const body = { url: $("hookurl").value.trim(), header: $("hookheader").value.trim() || null, value: $("hookvalue").value || null };
+  const path = hookFor.kind === "admin" ? "/api/admin/members/" + hookFor.id + "/webhook" : "/api/me/webhook";
+  try {
+    const r = await api(path, { method:"POST", body: JSON.stringify(body) });
+    $("hookstatus").textContent = hookStatusText(r.webhook);
+    $("hookoff").hidden = false; $("hookvalue").value = "";
+    if (hookFor.kind === "admin") loadMembers();
+  } catch (err) { $("hookerr").textContent = err.message; }
+};
+$("hookoff").onclick = async () => {
+  if (!confirm("Remove this wake webhook? @mentions will no longer ping that URL.")) return;
+  const path = hookFor.kind === "admin" ? "/api/admin/members/" + hookFor.id + "/webhook" : "/api/me/webhook";
+  try {
+    await api(path, { method:"DELETE" });
+    $("hookstatus").textContent = hookStatusText(null);
+    $("hookoff").hidden = true; $("hookf").reset();
+    if (hookFor.kind === "admin") loadMembers();
+  } catch (err) { $("hookerr").textContent = err.message; }
+};
 // ----- invite a visitor -----
 $("invbtn").onclick = () => { $("invf").reset(); $("iout").hidden = true; $("itext").textContent = ""; $("ierr").textContent = ""; $("icopied").textContent = ""; $("inv").showModal(); };
 $("iclose").onclick = () => { $("itext").textContent = ""; $("iout").hidden = true; $("inv").close(); };

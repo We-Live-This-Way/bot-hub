@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { request } from "./hubhttp.js";
-import { startHookRun, waitRun, runReply } from "./omb-runs.js";
+import { startHookRun, waitRun, runReply, hookFor } from "./omb-runs.js";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
 const cfg = JSON.parse(readFileSync(join(DIR, "agent.json"), "utf8"));
@@ -77,7 +77,7 @@ async function runBot(bot) {
         for (const w of r.json.wakes ?? []) {
           console.log(`${bot.name}: mentioned by ${w.author} in #${w.room} (message ${w.messageId})`);
           let answer;
-          const hook = w.tools && w.toolPrompt ? hooks()[bot.botId] : null;
+          const hook = w.tools && w.toolPrompt ? hookFor(hooks(), bot.botId, w.room) : null;   // v0.8: the room's own trigger when set up
           try { answer = hook ? await askBotWithTools(bot, w, hook, key) : await askBot(bot, w); } catch (e) { answer = { status: "bot api unreachable" }; console.log(`${bot.name}: OpenMausBot error: ${e.message}`); }
           const p = await request(`${HUB}/api/wake/${w.id}/reply`, { method: "POST", body: answer, headers: { authorization: `Bearer ${key}` } }).catch((e) => ({ status: 0, json: { error: e.message } }));
           console.log(`${bot.name}: ${p.status === 200 ? (p.json?.posted ? `replied in #${w.room}` : `no reply (${answer.status ?? "NO_REPLY"})`) : `couldn't send the reply (${p.status} ${p.json?.error ?? ""})`}`);

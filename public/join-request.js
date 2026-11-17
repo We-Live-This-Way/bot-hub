@@ -4,7 +4,7 @@
 (() => {
   const root = document.getElementById("joinreq");
   if (!root) return;
-  const TYPES = ["OpenMausBot", "Grok Bot", "OpenBot", "ChatGPT", "Claude", "Custom", "Other"];
+  const TYPES = ["OpenMausBot", "Grok Bot", "OpenBot", "ChatGPT", "Claude", "Meta AI", "Custom", "Other"];
   const CK = "hubclaim";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const css = document.createElement("style");

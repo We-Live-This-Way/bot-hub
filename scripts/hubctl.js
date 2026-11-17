@@ -23,10 +23,30 @@
 //   hubctl room-add <room> <member> | room-remove <room> <member>   edit a room's roster;  hubctl roster [room]
 //   hubctl uploader <name|id> on|off               may this member share files (admin always can; visitors never)
 //   hubctl uploaders                               who may share files
+//   hubctl room-new <room> [--visitors] [topic...]  make a room (members only unless --visitors)
+//   class notes (v0.7): files with no open link, handed only to members who attended a class
+//   hubctl class-file <room> <path.md|.txt>        store class notes in a room (not announced, not listed, no /f link)
+//   hubctl class-grant <fileId> <name...>          hand them to members (quote multi-word names, or separate with commas)
+//   hubctl class-revoke <fileId> <name...>         take them back;  hubctl class-grants <fileId>   who has them
+//   hubctl class-notes                             every class-notes file
+//   (v0.11) a new grant to a bot is delivered by the running hub: DM with a one-time link + full text through its wake path
+//   hubctl class-deliver <fileId> <name...>        send it again to members who already have the grant (new link)
+//   hubctl class-deliveries [fileId]               delivery log;  hubctl class-links [fileId]   one-time links (no tokens shown)
+//   hubctl class-link-revoke <linkId>              kill an unused link
+//   hubctl attendance <room> [sinceMessageId]       who posted in a room after a message (default: everything)
+//   hubctl clear <room>                             archive a room's messages for everyone (/clearall in the web app)
+//   hubctl unclear <room> [--since ts]              restore them (default: the last clear; --since is an epoch or ISO date)
+//   hubctl groups | group-new <name> | group-del <name>
+//   hubctl group-add <group> <member> | group-remove <group> <member>
+//   hubctl dms | dm <name> ["text"]                 list your (the admin's) direct messages, or open/post one
+//   hubctl wake-hook <name> --url <https://...> [--header Name] [--value ...]
+//        ping this bot via any incoming-webhook URL when it's @mentioned (optional auth header)
+//   hubctl wake-hook <name> off                      remove that webhook
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb } from "../src/db.js";
 import { Hub, loginLinks, readSecretFile, isGuest } from "../src/hub.js";
+import { WakeWebhooks, redactUrl } from "../src/wake-webhooks.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA = resolve(process.env.BOT_HUB_DATA || join(ROOT, "data"));
@@ -122,6 +142,88 @@ switch (cmd) {
   }
   case "get": { const f = hub.fileFor(null, rest[0]); process.stdout.write(f.content); break; }
   case "files": console.table(hub.rooms().flatMap((r) => hub.files(null, r.name))); break;
+  case "room-new": {
+    const words = rest.filter((a) => a !== "--visitors");
+    if (!words[0]) die("usage: hubctl room-new <room> [--visitors] [topic...]");
+    const r = hub.addRoom(words[0], words.slice(1).join(" "), flag("--visitors"));
+    console.log(`made #${r.name}${r.visitors ? " (open to visitors)" : " (members only)"}: ${r.topic}`); break;
+  }
+  case "class-file": {
+    const [roomName, path] = rest;
+    if (!roomName || !path) die("usage: hubctl class-file <room> <path.md|.txt>");
+    const { readFileSync } = await import("node:fs"); const { basename } = await import("node:path");
+    const r = hub.attachGated(hub.members().find((x) => x.is_admin), roomName.replace(/^#/, ""), { name: basename(path), content: readFileSync(path, "utf8") });
+    console.log(`class notes: file ${r.file.id} "${r.file.name}" (${r.file.size} bytes) in #${r.file.room}. Not announced, no open link. Hand out with: hubctl class-grant ${r.file.id} <name...>`); break;
+  }
+  case "class-grant": case "class-revoke": {
+    if (!/^\d+$/.test(rest[0] || "") || rest.length < 2) die(`usage: hubctl ${cmd} <fileId> <name...>`);
+    const r = hub.grantFile(null, rest[0], rest.slice(1), cmd === "class-grant");
+    const verb = cmd === "class-grant" ? "granted" : "revoked";
+    console.log(`file ${r.file} "${r.name}" (#${r.room}): ${verb}: ${r.changed.join(", ") || "(none)"}${r.unchanged.length ? `; already ${cmd === "class-grant" ? "had it" : "without it"}: ${r.unchanged.join(", ")}` : ""}${r.unknown.length ? `; no such member: ${r.unknown.join(", ")}` : ""}${r.cantSeeRoom.length ? `; can't see #${r.room}: ${r.cantSeeRoom.join(", ")}` : ""}`);
+    console.log(`now has it: ${r.grants.join(", ") || "(nobody yet)"}`);
+    if (r.delivering?.length) console.log(`delivering to: ${r.delivering.join(", ")} (the running hub sends it within a few seconds; check: hubctl class-deliveries ${r.file})`);
+    break;
+  }
+  case "class-deliver": {
+    if (!/^\d+$/.test(rest[0] || "") || rest.length < 2) die("usage: hubctl class-deliver <fileId> <name...>");
+    const r = hub.redeliverNotes(null, rest[0], rest.slice(1));
+    console.log(`file ${r.file} "${r.name}": queued for ${r.queued.map((q) => `${q.name} (delivery ${q.delivery})`).join(", ") || "(nobody)"}${r.notGranted.length ? `; not granted (class-grant first): ${r.notGranted.join(", ")}` : ""}${r.unknown.length ? `; no such member: ${r.unknown.join(", ")}` : ""}`);
+    if (r.queued.length) console.log(`the running hub sends it within a few seconds; check: hubctl class-deliveries ${r.file}`);
+    break;
+  }
+  case "class-deliveries": {
+    const t = (x) => (x ? new Date(x).toLocaleString() : "");
+    console.table(hub.noteDeliveries({ fileId: rest[0] ? Number(rest[0]) : null }).map((d) => ({ id: d.id, file: `${d.file_id} ${d.file ?? ""}`, member: d.member, by: d.requested_by, path: d.path ?? "", parts: d.parts ?? "", status: d.status, at: t(d.created_at), done: t(d.done_at), detail: d.detail ?? "" })));
+    break;
+  }
+  case "class-links": {
+    const t = (x) => (x ? new Date(x).toLocaleString() : "");
+    console.table(hub.noteLinks(rest[0] ? Number(rest[0]) : null).map((l) => ({ id: l.id, file: `${l.file_id} ${l.file ?? ""}`, member: l.member, state: l.state, made: t(l.created_at), expires: t(l.expires_at), used: t(l.used_at), usedFrom: l.used_ip ?? "" })));
+    break;
+  }
+  case "class-link-revoke": { if (!/^\d+$/.test(rest[0] || "")) die("usage: hubctl class-link-revoke <linkId>"); console.log(hub.revokeNoteLink(rest[0]).revoked ? `link ${rest[0]} revoked` : `link ${rest[0]} was already revoked or doesn't exist`); break; }
+  case "class-grants": { const r = hub.fileGrants(null, rest[0]); console.log(`file ${r.file} "${r.name}":`); console.table(r.grants); break; }
+  case "class-notes": console.table(hub.classNotes(null).map((f) => ({ id: f.id, name: f.name, size: f.size, room: f.room, by: f.by, grants: hub.fileGrants(null, f.id).grants.length }))); break;
+  case "attendance": {
+    if (!rest[0]) die("usage: hubctl attendance <room> [sinceMessageId]");
+    const r = hub.attendance(null, rest[0].replace(/^#/, ""), rest[1] ?? 0);
+    console.log(`#${r.room} after message #${r.since}: ${r.people.length} ${r.people.length === 1 ? "person" : "people"} posted`);
+    console.table(r.people); break;
+  }
+  case "clear": {
+    if (!rest[0]) die("usage: hubctl clear <room>");
+    const r = hub.clearRoom(null, rest[0].replace(/^#/, ""));
+    console.log(`cleared #${r.room}: archived ${r.archived} message${r.archived === 1 ? "" : "s"}; posted #${r.message.id}`);
+    break;
+  }
+  case "unclear": {
+    if (!rest[0]) die("usage: hubctl unclear <room> [--since ts]");
+    const r = hub.unclearRoom(null, rest[0].replace(/^#/, ""), { since: val("--since") });
+    console.log(`restored #${r.room}: ${r.restored} message${r.restored === 1 ? "" : "s"}${r.since ? ` (archived at or after ${new Date(r.since).toISOString()})` : ""}`);
+    break;
+  }
+  case "groups":
+    if (!hub.groups().length) { console.log("(no groups yet)"); break; }
+    for (const g of hub.groups()) console.log(`${g.name}: ${g.members.join(", ") || "(empty)"}`);
+    break;
+  case "group-new": {
+    if (!rest[0]) die("usage: hubctl group-new <name>");
+    const g = hub.addGroup(rest.join(" "));
+    console.log(`made group "${g.name}"`);
+    break;
+  }
+  case "group-del": {
+    if (!rest[0]) die("usage: hubctl group-del <name>");
+    const g = hub.removeGroup(rest.join(" "));
+    console.log(`deleted group "${g.removed}"`);
+    break;
+  }
+  case "group-add": case "group-remove": {
+    if (rest.length < 2) die(`usage: hubctl ${cmd} <group> <member>`);
+    const r = hub.setGroupMember(rest[0], who(rest.slice(1).join(" ")).id, cmd === "group-add");
+    console.log(`${r.name}: ${r.members.join(", ") || "(empty)"}`);
+    break;
+  }
   case "deny": console.log(hub.denyRequest(rest[0])); break;
   case "listen": {
     if (rest.length < 3) die("usage: hubctl listen <room> <bot> on|off");
@@ -131,7 +233,7 @@ switch (cmd) {
   case "listeners": for (const r of hub.rooms()) console.log(`#${r.name}: ${hub.roomListeners(r.name).map((x) => x.name).join(", ") || "(none)"}`); break;
   case "machine": { const m = who(rest[0]); hub.updateMember(m.id, { machine: rest[1] || null }); console.log(`${m.name}: machine ${rest[1] || "(none)"}`); break; }
   case "rotate": { const m = who(rest[0]); const r = hub.rotateKey(m.id); console.log(m.managed_key || m.is_admin ? "rotated; key file updated" : `new key (shown once): ${r.key}`); break; }
-  case "remove": console.log(hub.removeMember(who(rest[0]).id)); break;
+  case "remove": { const m = who(rest[0]); new WakeWebhooks(DATA).clear(m.id); console.log(hub.removeMember(m.id)); break; }
   case "wake": console.log(hub.updateMember(who(rest[0]).id, { wake: onoff(rest[1]) })); break;
   case "guest-wake": { const m = who(rest[0]); hub.updateMember(m.id, { guestWake: onoff(rest[1]) }); console.log(`visitors may wake ${m.name}: ${rest[1]}`); break; }
   case "guest-wakes": hub.setSetting("guest_wakes", onoff(rest[0]) ? "on" : "off"); console.log(`visitor wake-ups: ${hub.guestWakesOn() ? "on" : "off"}`); break;
@@ -143,6 +245,47 @@ switch (cmd) {
   }
   case "roster": for (const r of hub.rooms().filter((x) => !rest[0] || x.name === rest[0].replace(/^#/, ""))) console.log(`#${r.name}${r.private ? " (private)" : ""}: ${hub.roster(r.name).map((x) => x.name).join(", ") || "(none)"}`); break;
   case "room-visitors": console.log(hub.setRoomVisitors(rest[0], onoff(rest[1]))); break;
-  default: console.log("usage: hubctl list|guests|rooms|wakes|login-link|invite|add-bot|add-remote|machine|type|sync-models|listen|listeners|requests|approve|deny|role|notify|file|get|files|rotate|remove|wake|guest-wake|guest-wakes|room-visitors"); process.exit(cmd ? 1 : 0);
+  case "dms": {
+    const rows = hub.dms(hub.members().find((m) => m.is_admin));
+    if (!rows.length) { console.log("(no direct messages)"); break; }
+    console.table(rows.map((r) => ({ with: r.title, messages: r.messages, last: r.last ? `${r.last.author}: ${r.last.text}` : "" })));
+    break;
+  }
+  case "dm": {
+    const admin = hub.members().find((m) => m.is_admin);
+    const who = rest[0];
+    const text = rest.slice(1).join(" ").trim();
+    if (!who) die('usage: hubctl dm <name> ["text"]');
+    const opened = hub.openDm(admin, who);
+    if (!text) { console.log(`DM with ${opened.title} (${opened.room})`); break; }
+    const m = hub.post(admin, opened.room, text, { via: "cli" });
+    console.log(`posted #${m.id} to ${opened.title}${m.notice ? ` (note: ${m.notice})` : ""}`);
+    break;
+  }
+  case "wake-hook": {
+    const hooks = new WakeWebhooks(DATA);
+    const off = rest.includes("off") && !val("--url");
+    const name = rest.filter((a, i) => !a.startsWith("--") && a !== "off" && !["--url", "--header", "--value"].includes(rest[i - 1])).join(" ");
+    if (!name) die("usage: hubctl wake-hook <name> --url <https://...> [--header Name] [--value ...]  |  hubctl wake-hook <name> off");
+    const m = who(name);
+    if (off) {
+      hooks.clear(m.id);
+      if (m.wake_via === "webhook") hub.updateMember(m.id, { wake: false, wakeVia: "local" });
+      console.log(`removed webhook for ${m.name}`);
+      break;
+    }
+    const url = val("--url");
+    if (!url) {
+      const pub = hooks.public(m.id);
+      if (!pub) { console.log(`${m.name}: no wake webhook`); break; }
+      console.log(`${m.name}: ${pub.url}${pub.header ? ` (header ${pub.header})` : ""}`);
+      break;
+    }
+    const hook = await hooks.set(m.id, { url, header: val("--header"), value: val("--value") });
+    hub.updateMember(m.id, { wake: true, wakeVia: "webhook" });
+    console.log(`${m.name}: webhook set to ${hook.url}${hook.header ? ` (header ${hook.header})` : ""}`);
+    break;
+  }
+  default: console.log("usage: hubctl list|guests|rooms|wakes|login-link|invite|add-bot|add-remote|machine|type|sync-models|listen|listeners|requests|approve|deny|role|notify|file|get|files|rotate|remove|wake|guest-wake|guest-wakes|room-visitors|room-new|class-file|class-grant|class-revoke|class-grants|class-notes|attendance|clear|unclear|groups|group-new|group-del|group-add|group-remove|dms|dm|wake-hook"); process.exit(cmd ? 1 : 0);
 }
 db.close();

@@ -8,6 +8,61 @@ export function hashKey(key) {
 export function newKey(prefix = "hub") {
   return `${prefix}_${randomBytes(32).toString("base64url")}`;
 }
+/** Mask hub keys (hub_, hubguest_, hubadmin_, unclaimed_, any future hub…_ prefix),
+ *  #key= / ?key= / ?api_key= values, and Bearer tokens. Use on logs and any output
+ *  that is not the one-time "shown once" invite/rotate display. */
+export function redactSecrets(text) {
+  if (text == null) return text;
+  let s = typeof text === "string" ? text : (text instanceof Error ? (text.stack || text.message) : (() => { try { return JSON.stringify(text); } catch { return String(text); } })());
+  s = s.replace(/#key=[^\s&#"']+/gi, "#key=[REDACTED]");
+  s = s.replace(/([?&](?:api_key|key)=)[^&\s"']+/gi, "$1[REDACTED]");
+  s = s.replace(/\bBearer\s+\S+/gi, "Bearer [REDACTED]");
+  s = s.replace(/(\b(?:x-)?api-?key\s*[:=]\s*)\S+/gi, "$1[REDACTED]");
+  s = s.replace(/\b(?:hub[a-z]*|unclaimed)_[A-Za-z0-9_-]{8,}/gi, (m) => `${m.slice(0, m.indexOf("_") + 1)}[REDACTED]`);
+  return s;
+}
+export function installLogRedaction(cons = console) {
+  for (const m of ["log", "info", "warn", "error", "debug"]) {
+    const orig = cons[m].bind(cons);
+    cons[m] = (...args) => orig(...args.map((a) => {
+      if (typeof a === "string") return redactSecrets(a);
+      if (a instanceof Error) {
+        const e = new Error(redactSecrets(a.message));
+        e.name = a.name;
+        e.stack = a.stack ? redactSecrets(a.stack) : a.stack;
+        if (a.status != null) e.status = a.status;
+        return e;
+      }
+      return a;
+    }));
+  }
+}
+function headerVal(req, name) {
+  const v = req?.headers?.[name];
+  if (v == null) return "";
+  return String(Array.isArray(v) ? v[0] : v).trim();
+}
+/** Pull a hub key from the headers or query Meta AI and other connectors actually send.
+ *  Order: Bearer, raw Authorization, x-api-key, api-key, then api_key / key query params. */
+export function extractAuth(req) {
+  const auth = headerVal(req, "authorization");
+  if (auth) {
+    const m = auth.match(/^Bearer\s+(\S+)/i);
+    if (m) return { key: m[1], method: "bearer" };
+    return { key: auth, method: "authorization" };
+  }
+  const xApi = headerVal(req, "x-api-key");
+  if (xApi) return { key: xApi, method: "x-api-key" };
+  const apiKey = headerVal(req, "api-key");
+  if (apiKey) return { key: apiKey, method: "api-key" };
+  let url;
+  try { url = new URL(req.url, "http://hub.local"); } catch { url = null; }
+  const qApi = url?.searchParams.get("api_key");
+  if (qApi && qApi.trim()) return { key: qApi.trim(), method: "query:api_key" };
+  const qKey = url?.searchParams.get("key");
+  if (qKey && qKey.trim()) return { key: qKey.trim(), method: "query:key" };
+  return { key: "", method: null };
+}
 export function slugify(name) {
   return String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "member";
 }
@@ -166,7 +221,82 @@ function migrate(db) {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (room_id, member_id)
     );`);
+  // v0.7: class notes: a file can be gated (no open link, not listed) and handed to chosen members only
+  if (!hasCol(db, "files", "gated")) db.exec("ALTER TABLE files ADD COLUMN gated INTEGER NOT NULL DEFAULT 0");
+  db.exec(`CREATE TABLE IF NOT EXISTS file_grants (
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      granted_by TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (file_id, member_id)
+    );`);
   if (!hasCol(db, "wake_queue", "progress_at")) db.exec("ALTER TABLE wake_queue ADD COLUMN progress_at INTEGER"); // v0.6: one "working on it" note
+  if (!hasCol(db, "wake_queue", "progress_msg")) db.exec("ALTER TABLE wake_queue ADD COLUMN progress_msg INTEGER"); // v0.8: that note's message id (edited into the answer)
+  if (!hasCol(db, "messages", "edited_at")) db.exec("ALTER TABLE messages ADD COLUMN edited_at INTEGER"); // v0.8: last edit time (null: never edited)
+  db.exec("CREATE INDEX IF NOT EXISTS messages_edited ON messages(room_id, edited_at) WHERE edited_at IS NOT NULL");
+  // v0.8.4: /clear archives a room's messages (hidden, not deleted) so they can be restored
+  if (!hasCol(db, "messages", "archived_at")) {
+    db.exec("ALTER TABLE messages ADD COLUMN archived_at INTEGER");
+    db.exec("CREATE INDEX IF NOT EXISTS messages_room_live ON messages(room_id, id) WHERE archived_at IS NULL");
+  }
+  if (!hasCol(db, "rooms", "transcript_at")) db.exec("ALTER TABLE rooms ADD COLUMN transcript_at INTEGER");
+  // v0.9: direct messages are private rooms with kind='dm' (channel is the default)
+  if (!hasCol(db, "rooms", "kind")) db.exec("ALTER TABLE rooms ADD COLUMN kind TEXT NOT NULL DEFAULT 'channel'"); // channel | dm
+
+  // v0.8.5: /clear hides a room's current messages for one member only (across their devices)
+  db.exec(`CREATE TABLE IF NOT EXISTS member_clears (
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      cleared_through INTEGER NOT NULL DEFAULT 0,
+      cleared_at INTEGER NOT NULL,
+      PRIMARY KEY (member_id, room_id)
+    );`);
+  // v0.8.7: named groups of members (e.g. sales); membership only, no extra access
+  db.exec(`CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS group_members (
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (group_id, member_id)
+    );`);
+  // v0.11: class notes reach every bot they're granted to: a delivery per (file, member), plus a one-time download link
+  db.exec(`CREATE TABLE IF NOT EXISTS note_deliveries (
+      id INTEGER PRIMARY KEY,
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      requested_by TEXT,
+      created_at INTEGER NOT NULL,
+      started_at INTEGER,
+      done_at INTEGER,
+      status TEXT NOT NULL DEFAULT 'pending',
+      detail TEXT,
+      path TEXT,
+      parts INTEGER,
+      dm_message_id INTEGER,
+      link_id INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS note_deliveries_status ON note_deliveries(status);
+    CREATE TABLE IF NOT EXISTS note_links (
+      id INTEGER PRIMARY KEY,
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      delivery_id INTEGER,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      used_ip TEXT,
+      revoked_at INTEGER
+    );`);
+  // v0.11: polled bots get class notes through their wake queue: the part's own text, and where the answer goes
+  if (!hasCol(db, "wake_queue", "payload")) db.exec("ALTER TABLE wake_queue ADD COLUMN payload TEXT");
+  if (!hasCol(db, "wake_queue", "delivery_id")) db.exec("ALTER TABLE wake_queue ADD COLUMN delivery_id INTEGER");
+  if (!hasCol(db, "wake_queue", "part")) db.exec("ALTER TABLE wake_queue ADD COLUMN part INTEGER");
+  if (!hasCol(db, "wake_queue", "reply_room_id")) db.exec("ALTER TABLE wake_queue ADD COLUMN reply_room_id INTEGER");
 }
 
 export function findMemberByKey(db, key) {

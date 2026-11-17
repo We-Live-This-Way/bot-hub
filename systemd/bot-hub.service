@@ -13,6 +13,11 @@ Environment=BOT_HUB_PUBLIC_URL=http://localhost:8820
 #Environment=BOT_HUB_MACHINE=home
 #Environment=BOT_HUB_ADMIN_NAME=Admin
 #Environment=BOT_HUB_BRAND=We Live This Way
+# Optional: who may use @group / @class, bots visitors may never wake, public machine tags (comma-separated slugs).
+#Environment=BOT_HUB_GROUP_WAKE=
+#Environment=BOT_HUB_CLASS_WAKE=
+#Environment=BOT_HUB_NEVER_GUEST_WAKE=
+#Environment=BOT_HUB_SERVER_LABELS=
 Environment=NODE_NO_WARNINGS=1
 ExecStart=%h/.local/node/bin/node %h/.local/share/bot-hub/src/server.js
 Restart=on-failure

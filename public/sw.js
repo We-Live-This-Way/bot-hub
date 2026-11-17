@@ -1,6 +1,6 @@
 // Bot Hub service worker: caches the app shell only, so the installed app opens fast and shows something offline.
 // Never touches /api/, /mcp or anything with a key: those always go straight to the network and are never stored.
-const CACHE = "bot-hub-shell-v2";
+const CACHE = "bot-hub-shell-v10";
 const SHELL = ["/", "/join", "/join-request.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
