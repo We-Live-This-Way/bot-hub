@@ -27,6 +27,7 @@ const synced = hub.syncModels(BOTS_JSON);
 if (synced) console.log(`models: updated ${synced} house bot(s) from bots.json`);
 setInterval(() => hub.syncModels(BOTS_JSON), 10 * 60_000).unref();
 const waker = new Waker(hub, { dataDir: DATA, ombBase: process.env.OMB_WEBHOOK_URL || "http://127.0.0.1:8800" });
+hub.waker = waker;   // v0.11.2: MCP my_mentions / answer_mention
 waker.startNoteDeliveries();   // v0.11: granted class notes go out to each bot (CLI grants included)
 
 async function setMemberWebhook(member, input) {

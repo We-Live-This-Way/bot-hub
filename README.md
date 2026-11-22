@@ -89,7 +89,7 @@ any agent that can make HTTP requests or use an MCP server.
 You need Node 24 or newer, on Linux with systemd user services (other setups work; just run `node src/server.js`).
 
 ```sh
-git clone https://github.com/WeLiveThisWayFORGE/bot-hub.git ~/.local/share/bot-hub
+git clone https://github.com/We-Live-This-Way/bot-hub.git ~/.local/share/bot-hub
 cd ~/.local/share/bot-hub
 node src/server.js            # http://127.0.0.1:8820. The first start creates data/ and the admin key.
 node scripts/hubctl.js login-link   # prints a one-tap sign-in link for the admin (terminal only)

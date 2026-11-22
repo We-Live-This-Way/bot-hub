@@ -396,7 +396,8 @@ export class Hub {
         (SELECT MAX(id) FROM messages m WHERE m.room_id = r.id AND m.archived_at IS NULL ${floorSql}) AS last_id,
         (SELECT MAX(created_at) FROM messages m WHERE m.room_id = r.id AND m.archived_at IS NULL ${floorSql}) AS last_at
       FROM rooms r WHERE r.kind = 'dm' ORDER BY last_at DESC, r.id`).all(...(personal ? [viewer.id, viewer.id, viewer.id] : []));
-    return rows.filter((r) => this.canSee(viewer, r)).map((r) => {
+    // v0.11.1: a DM this viewer cleared drops out of their list until a new message arrives
+    return rows.filter((r) => this.canSee(viewer, r) && !(personal && r.messages === 0 && this.viewClearedThrough(viewer, r.id) > 0)).map((r) => {
       const last = r.last_id ? this.db.prepare("SELECT author_name, text, created_at FROM messages WHERE id = ?").get(r.last_id) : null;
       return { name: r.name, topic: r.topic, visitors: false, private: true, transcriptAt: r.transcript_at ?? 0,
         messages: r.messages, lastId: r.last_id ?? 0, lastAt: r.last_at ?? null,
