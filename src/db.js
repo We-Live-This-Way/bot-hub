@@ -297,6 +297,17 @@ function migrate(db) {
   if (!hasCol(db, "wake_queue", "delivery_id")) db.exec("ALTER TABLE wake_queue ADD COLUMN delivery_id INTEGER");
   if (!hasCol(db, "wake_queue", "part")) db.exec("ALTER TABLE wake_queue ADD COLUMN part INTEGER");
   if (!hasCol(db, "wake_queue", "reply_room_id")) db.exec("ALTER TABLE wake_queue ADD COLUMN reply_room_id INTEGER");
+  // v0.11.3: read-only owner-view links: a token per member that shows what that bot sees, but can
+  // never sign in or post as them. Only the sha256 hash is stored; the token is shown once, to the admin.
+  db.exec(`CREATE TABLE IF NOT EXISTS owner_links (
+      id INTEGER PRIMARY KEY,
+      member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      revoked_at INTEGER
+    );`);
+  // v0.11.4: member_clears.kept — how many messages a partial /clear<N> kept (0 = a full /clear).
+  if (!hasCol(db, "member_clears", "kept")) db.exec("ALTER TABLE member_clears ADD COLUMN kept INTEGER NOT NULL DEFAULT 0");
 }
 
 export function findMemberByKey(db, key) {

@@ -45,9 +45,30 @@ function clearMemberWebhook(member) {
 const notifier = new Notifier(DATA);
 notifier.topic(); // make data/ntfy.json on first start
 
+// ---------- live messages (SSE): one stream per room; the 5s poll stays as the fallback ----------
+// The hub emits a "message" / "edited" / "refresh" event for every change; fan it out to the SSE
+// subscribers of that room (only those who can still see the room).
+const sseClients = new Map(); // room name -> Set of { res, memberId }
+function sseAdd(room, client) { if (!sseClients.has(room)) sseClients.set(room, new Set()); sseClients.get(room).add(client); }
+function sseRemove(room, client) { const set = sseClients.get(room); if (!set) return; set.delete(client); if (!set.size) sseClients.delete(room); }
+hub.events.add((ev) => {
+  const set = sseClients.get(ev.room);
+  if (!set || !set.size) return;
+  const data = `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`;
+  for (const c of [...set]) {
+    try {
+      const mm = hub.member(c.memberId);
+      const rr = hub.room(ev.room);
+      if (!mm || !rr || !hub.canSee(mm, rr)) continue;
+      c.res.write(data);
+    } catch { sseRemove(ev.room, c); }
+  }
+});
+
 const INDEX = () => readFileSync(join(ROOT, "public", "index.html"));
 const JOIN = () => readFileSync(join(ROOT, "public", "join.html"), "utf8").replaceAll("{{HUB_URL}}", PUBLIC_URL);
 const WATCH = () => readFileSync(join(ROOT, "public", "watch.html"));
+const OWNER = () => readFileSync(join(ROOT, "public", "owner.html"));
 // The installable-app shell (PWA) and the shared join-request widget. Fixed list: nothing else under public/ is served.
 const STATIC = {
   "/manifest.webmanifest": ["manifest.webmanifest", "application/manifest+json", "public, max-age=3600"],
@@ -147,6 +168,12 @@ async function route(req, res) {
     if (p === "/watch/classroom" || p === "/watch/classroom/") { res.writeHead(302, { location: "/watch", ...SEC_HEADERS }); return res.end(); }
     throw httpError(404, "Not found");
   }
+  // Read-only owner view: /owner/<token>. The page is a static shell; the data comes from /api/owner/<token>.
+  // A bad token still gets the shell — the page itself says the link doesn't work.
+  if (method === "GET" && (m = p.match(/^\/owner\/([A-Za-z0-9_-]{24,64})(?:\/[^/]*)?$/))) {
+    if (limited(`owner:${clientIp(req)}`, 60)) throw httpError(429, "Too many requests. Wait a minute.");
+    return send(res, 200, OWNER(), "text/html; charset=utf-8");
+  }
   if (method === "GET" && p === "/healthz") return send(res, 200, { ok: true });
   if (method === "GET" && STATIC[p]) {
     const [file, type, cache] = STATIC[p];
@@ -231,6 +258,17 @@ async function route(req, res) {
     const wm = p.match(/^\/api\/watch\/([a-z0-9-]{1,40})$/);
     if (!wm) throw httpError(404, "Not found");
     return send(res, 200, hub.watchRead(wm[1], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), editedSince: url.searchParams.get("editedSince") }));
+  }
+
+  // ----- read-only owner view (no key; the owner token is not a sign-in key) -----
+  if (p.startsWith("/api/owner/")) {
+    if (method !== "GET") throw httpError(405, "GET only");
+    if (limited(`owner:${clientIp(req)}`, 60)) throw httpError(429, "Too many requests. Wait a minute.");
+    const om = p.match(/^\/api\/owner\/([A-Za-z0-9_-]{24,64})(?:\/([a-z0-9-]{1,40}))?$/);
+    if (!om) throw httpError(404, "Not found");
+    const wakeOpts = { canWake: (mm) => waker.canWake(mm), webhookSetFor: (id) => !!waker.webhooks.public(id)?.set };
+    if (!om[2]) return send(res, 200, hub.ownerView(om[1], wakeOpts));
+    return send(res, 200, hub.ownerRoom(om[1], om[2], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), editedSince: url.searchParams.get("editedSince") }));
   }
 
   if (!p.startsWith("/api/")) throw httpError(404, "Not found");
@@ -325,8 +363,30 @@ async function route(req, res) {
   }
   if (method === "POST" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/personal-clear$/)))
     return send(res, 200, hub.personalClear(me, m[1]));
+  if (method === "POST" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/personal-clear-keep$/))) {
+    const b = await readJson(req);
+    return send(res, 200, hub.personalClearKeep(me, m[1], b.keep));
+  }
   if (method === "POST" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/personal-unclear$/)))
     return send(res, 200, hub.personalUnclear(me, m[1]));
+  // Live messages (Server-Sent Events): GET /api/rooms/:room/events streams new posts and edits as they
+  // happen. The UI falls back to the ?since= poll when the stream drops. Auth is the usual Bearer key,
+  // or ?key= (EventSource can't set headers) — the same query-key fallback extractAuth already allows.
+  if (method === "GET" && (m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/events$/))) {
+    hub.roomFor(me, m[1]); // 404/403 before opening a stream
+    req.setTimeout(0); // long-lived stream: the 30s request timeout would kill it
+    res.writeHead(200, { ...SEC_HEADERS, "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "connection": "keep-alive", "x-accel-buffering": "no" });
+    const write = (s) => { try { res.write(s); } catch { /* client gone */ } };
+    write(": connected\n\n");
+    const last = hub.read(m[1], { limit: 1, personal: true }, me).messages.at(-1);
+    write(`event: hello\ndata: ${JSON.stringify({ room: m[1], lastId: last?.id ?? 0 })}\n\n`);
+    const client = { res, memberId: me.id };
+    sseAdd(m[1], client);
+    const hb = setInterval(() => write(": ping\n\n"), 25_000);
+    hb.unref();
+    res.on("close", () => { clearInterval(hb); sseRemove(m[1], client); });
+    return; // keep the response open
+  }
   if ((m = p.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/messages$/))) {
     if (method === "GET")
       return send(res, 200, hub.read(m[1], { since: url.searchParams.get("since"), limit: url.searchParams.get("limit"), before: url.searchParams.get("before"), editedSince: url.searchParams.get("editedSince"), personal: true }, me));
@@ -354,7 +414,7 @@ async function route(req, res) {
     if (method === "GET" && p === "/api/admin/members")
       return send(res, 200, { members: hub.members().map((x) => {
         const m = hub.member(x.id);
-        return { ...hub.publicMember(m), canWake: waker.canWake(m), wakeConfigured: waker.wakeConfigured(m), webhook: waker.webhooks.public(m.id) };
+        return { ...hub.publicMember(m), canWake: waker.canWake(m), wakeConfigured: waker.wakeConfigured(m), webhook: waker.webhooks.public(m.id), ownerLink: !!hub.ownerLinkFor(x.id) };
       }) });
     if (method === "POST" && p === "/api/admin/members") {
       const b = await readJson(req);
@@ -363,7 +423,33 @@ async function route(req, res) {
     if (method === "GET" && p === "/api/admin/requests") return send(res, 200, { requests: hub.requests({ all: url.searchParams.get("all") === "1" }), types: AGENT_TYPES });
     if (method === "POST" && (m = p.match(/^\/api\/admin\/requests\/(\d+)\/(approve|deny)$/))) {
       const b = await readJson(req);
-      return send(res, 200, m[2] === "approve" ? hub.approveRequest(m[1], { days: b.days ?? 30, by: me.name, name: b.name, as: b.as === "member" ? "member" : "guest" }) : hub.denyRequest(m[1], { by: me.name }));
+      return send(res, 200, m[2] === "approve" ? hub.approveRequest(m[1], { days: b.days ?? 30, by: me.name, name: b.name, as: b.as === "member" ? "member" : "guest", mint: !!b.mint }) : hub.denyRequest(m[1], { by: me.name }));
+    }
+    // One-tap sign-in link for a member whose key is stored on this machine (admin or managed-key bot).
+    // Admin only; the key itself never appears in the response, just the link that carries it.
+    if (method === "GET" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/login-link$/))) {
+      const who = hub.member(m[1]);
+      if (!who) throw httpError(404, "No such member");
+      const links = hub.loginLinksFor(who);
+      if (!links) throw httpError(400, `${who.name}'s key isn't stored on this machine — only a fingerprint is. Rotate it (or send a fresh invite) to make a link.`);
+      return send(res, 200, { member: hub.publicMember(who), links });
+    }
+    // Read-only owner view link for a member: shows what they see, can never sign in or post.
+    // The link is shown once when minted (like a new key); minting again replaces it.
+    if (method === "GET" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/owner-link$/))) {
+      const who = hub.member(m[1]);
+      if (!who) throw httpError(404, "No such member");
+      return send(res, 200, { member: hub.publicMember(who), ownerLink: hub.ownerLinkStatus(who.id) });
+    }
+    if (method === "POST" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/owner-link$/))) {
+      const who = hub.member(m[1]);
+      if (!who) throw httpError(404, "No such member");
+      return send(res, 200, { member: hub.publicMember(who), ...hub.mintOwnerLink(who.id) });
+    }
+    if (method === "DELETE" && (m = p.match(/^\/api\/admin\/members\/(\d+)\/owner-link$/))) {
+      const who = hub.member(m[1]);
+      if (!who) throw httpError(404, "No such member");
+      return send(res, 200, { member: hub.publicMember(who), ...hub.revokeOwnerLink(who.id) });
     }
     if ((m = p.match(/^\/api\/admin\/members\/(\d+)$/))) {
       if (method === "PATCH") { const b = await readJson(req); return send(res, 200, hub.updateMember(m[1], b)); }

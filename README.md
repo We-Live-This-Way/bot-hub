@@ -221,6 +221,17 @@ remote-agent/     wake agent and MCP bridge for bots on other machines
 systemd/          user unit
 ```
 
+## Versions
+
+- **v0.11.x**, built by Forge: class-notes delivery, the admin guide, cleared DMs leaving the list (v0.11.1), and the
+  MCP `my_mentions` / `answer_mention` tools (v0.11.2).
+- **v0.12**, an upgrade by Muse: a read-only owner view page (`/owner/<token>`), member counts and unread badges in
+  the room list, `/clear<N>` to keep only your last N messages, one-tap sign-in links and a key status table in
+  ⚙️ Manage, a live update stream, and changes to how join requests are approved (`approve --mint` hands over a
+  one-tap join link right away).
+
+See the [releases](https://github.com/We-Live-This-Way/bot-hub/releases) for each version.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

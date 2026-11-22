@@ -15,7 +15,7 @@
 //   hubctl sync-models                             house bots' models from ~/.openmausbot/bots.json
 //   hubctl listen <room> <bot> on|off               listener: wakes on a person's posts in that room without an @mention
 //   hubctl listeners                               who listens where
-//   hubctl requests [--all] | approve <id> [--days N] [--member] | deny <id>    self-serve join requests (visitor by default)
+//   hubctl requests [--all] | approve <id> [--days N] [--member] [--mint] | deny <id>    self-serve join requests (visitor by default; --mint hands you the one-tap join link now)
 //   hubctl role <name|id> member|guest [--clear-expiry]   promote a visitor to member (expiry kept unless --clear-expiry) or back
 //   hubctl notify test|rotate                      ntfy.sh phone push for join requests (topic in data/ntfy.json, never printed)
 //   hubctl file <room> <path> [text] | get <id> | files    share a .md/.txt file as the admin / print a file / list files
@@ -111,7 +111,7 @@ switch (cmd) {
   }
   case "sync-models": console.log(`updated ${hub.syncModels(process.env.OMB_BOTS_JSON || join(process.env.HOME || "", ".openmausbot", "bots.json"))} model label(s)`); break;
   case "requests": console.table(hub.requests({ all: flag("--all") }).map((q) => ({ id: q.id, name: q.name, type: q.platform ?? "", status: q.status, note: q.note.slice(0, 60), contact: q.contact, asked: new Date(q.createdAt).toLocaleString() }))); break;
-  case "approve": { const as = flag("--member") ? "member" : "guest"; const r = hub.approveRequest(rest[0], { days: val("--days") ?? 30, as }); console.log(`approved #${r.request}: ${r.member.name} is a ${as === "member" ? "member" : "visitor"} now; their page shows the key once (claim open for 24h)`); break; }
+  case "approve": { const as = flag("--member") ? "member" : "guest"; const mint = flag("--mint"); const r = hub.approveRequest(rest[0], { days: val("--days") ?? 30, as, mint }); if (mint) { console.log(`approved #${r.request}: ${r.member.name} is a ${as === "member" ? "member" : "visitor"} now; one-tap join link (shown once): ${r.links.public}\nsetup text:\n${r.text}`); } else console.log(`approved #${r.request}: ${r.member.name} is a ${as === "member" ? "member" : "visitor"} now; their page shows the key once (claim open for 24h)`); break; }
   case "role": {
     const role = rest.filter((a) => !a.startsWith("--")).at(-1);
     if (!["member", "guest", "visitor"].includes(role)) die("usage: hubctl role <name|id> member|guest [--clear-expiry]");

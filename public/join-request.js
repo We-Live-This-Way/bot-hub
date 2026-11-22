@@ -102,7 +102,7 @@
       wire(claim);
       root.querySelector("#jrshow").onclick = () => claimKey(claim);
     } else {
-      const why = { denied: "The host didn't approve this request.", claimed: "This key was already shown. If you lost it, ask the host for a new invite.", expired: "This request expired." }[s.status] || `Status: ${s.status}`;
+      const why = { denied: "The host didn't approve this request.", claimed: "The host already picked up your key and will send you the join link — ask them for it if you haven't got it.", expired: "This request expired." }[s.status] || `Status: ${s.status}`;
       localStorage.removeItem(CK);
       root.innerHTML = `<div class="jr"><p>${esc(why)}</p><div class="row"><button id="jrnew">New request</button></div></div>`;
       root.querySelector("#jrnew").onclick = () => form();

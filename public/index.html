@@ -14,8 +14,10 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <style>
-  :root { --bg:#f6f4ef; --panel:#fff; --ink:#1f1d1a; --mute:#7a746b; --line:#e4dfd5; --accent:#3d5a4a; --accent2:#e9efe9; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#161513; --panel:#1f1e1b; --ink:#ece8e1; --mute:#9a9389; --line:#33302b; --accent:#9cc3a9; --accent2:#26302a; } }
+  :root { --bg:#f6f4ef; --panel:#fff; --ink:#1f1d1a; --mute:#7a746b; --line:#e4dfd5; --accent:#3d5a4a; --accent2:#e9efe9; --bubble:#fff; --mine:#e9efe9; --good:#2c7a45; --goodbg:#e3f2e7; --bad:#b4472f; --warn:#8a6d3b; --warnbg:#f7ead0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161513; --panel:#1f1e1b; --ink:#ece8e1; --mute:#9a9389; --line:#33302b; --accent:#9cc3a9; --accent2:#26302a; --bubble:#232220; --mine:#26302a; --good:#6fc48f; --goodbg:#1e3a28; --bad:#d97a5f; --warn:#c9a86a; --warnbg:#3a2f1a; } }
+  html[data-theme="dark"] { --bg:#161513; --panel:#1f1e1b; --ink:#ece8e1; --mute:#9a9389; --line:#33302b; --accent:#9cc3a9; --accent2:#26302a; --bubble:#232220; --mine:#26302a; --good:#6fc48f; --goodbg:#1e3a28; --bad:#d97a5f; --warn:#c9a86a; --warnbg:#3a2f1a; }
+  html[data-theme="light"] { --bg:#f6f4ef; --panel:#fff; --ink:#1f1d1a; --mute:#7a746b; --line:#e4dfd5; --accent:#3d5a4a; --accent2:#e9efe9; --bubble:#fff; --mine:#e9efe9; --good:#2c7a45; --goodbg:#e3f2e7; --bad:#b4472f; --warn:#8a6d3b; --warnbg:#f7ead0; }
   * { box-sizing:border-box; }
   body { margin:0; font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
   header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:2; }
@@ -26,12 +28,29 @@
   a.btn { display:inline-block; text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:6px 12px; } a.btn.primary { background:var(--accent); color:var(--panel); border-color:var(--accent); }
   .wrap { display:grid; grid-template-columns:230px 1fr; height:calc(100vh - 53px); height:calc(100dvh - 53px); }
   nav { border-right:1px solid var(--line); overflow:auto; padding:10px; background:var(--panel); }
-  nav .room { display:block; width:100%; text-align:left; border:0; padding:8px 10px; border-radius:8px; margin-bottom:2px; background:transparent; }
-  nav .room.on { background:var(--accent2); font-weight:600; } nav .room .n { color:var(--mute); font-size:12px; float:right; }
+  nav .room { display:flex; align-items:center; gap:6px; width:100%; text-align:left; border:0; padding:8px 10px; border-radius:8px; margin-bottom:2px; background:transparent; }
+  nav .room.on { background:var(--accent2); font-weight:600; } nav .room .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  nav .room .n { color:var(--mute); font-size:12px; flex:none; }
+  nav .room .mem { color:var(--mute); font-size:12px; flex:none; white-space:nowrap; }
+  nav .room .un { background:#c2553a; color:#fff; font-size:11px; font-weight:700; border-radius:999px; padding:0 6px; flex:none; }
   .lock { font-size:11px; opacity:.7; margin-left:4px; }
   nav h4 { margin:14px 6px 6px; color:var(--mute); font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:.6px; }
   nav h4:first-child { margin-top:4px; }
-  .msg.hi { background:var(--accent2); margin:0 -8px; padding:6px 8px; border-radius:8px; }
+  .msg { display:flex; gap:10px; padding:8px 0; align-items:flex-start; }
+  .msg .av { width:32px; height:32px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; color:#fff; background:hsl(var(--h,150) 40% 42%); margin-top:2px; }
+  .msg .body { min-width:0; flex:1; }
+  .msg .head { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+  .msg .a { font-weight:600; } .msg .t { color:var(--mute); font-size:12px; }
+  .msg .b { white-space:pre-wrap; word-wrap:break-word; background:var(--bubble); border:1px solid var(--line); border-radius:4px 14px 14px 14px; padding:8px 12px; margin-top:3px; max-width:640px; width:fit-content; }
+  .msg.mine .b { background:var(--mine); border-color:transparent; }
+  .msg.hi .b { border-color:var(--accent); }
+  .msg .r { color:var(--mute); font-size:12px; margin-top:3px; }
+  .msg .ed { border:0; background:none; color:var(--mute); cursor:pointer; font-size:12px; padding:0 4px; }
+  .msg .via { font-size:11px; color:var(--mute); border:1px solid var(--line); border-radius:6px; padding:0 4px; }
+  .msg.sys { justify-content:center; text-align:center; color:var(--mute); font-size:13px; }
+  .msg.sys .b { background:transparent; border:0; padding:0; max-width:none; margin-top:0; }
+  .msg.sys .av, .msg.sys .head { display:none; }
+  .msg .file { margin-top:6px; }
   .comp { position:relative; }
   #ac { position:absolute; left:48px; right:80px; bottom:100%; margin-bottom:4px; background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); max-height:220px; overflow:auto; z-index:5; }
   #ac button { display:block; width:100%; text-align:left; border:0; border-radius:0; padding:8px 12px; background:transparent; }
@@ -44,12 +63,6 @@
   .clearedbar { padding:8px 16px; font-size:13px; color:var(--mute); border-bottom:1px solid var(--line); background:var(--bg); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .clearedbar[hidden] { display:none; }
   #msgs { flex:1; overflow:auto; padding:12px 16px; }
-  .msg { padding:6px 0; } .msg .a { font-weight:600; } .msg .t { color:var(--mute); font-size:12px; margin-left:6px; }
-  .msg.sys { text-align:center; color:var(--mute); font-size:13px; padding:10px 0; }
-  .msg.sys .b { display:inline; } .msg.sys .a, .msg.sys .ed { display:none; }
-  .msg .b { white-space:pre-wrap; word-wrap:break-word; } .msg .r { color:var(--mute); font-size:12px; }
-  .msg .ed { border:0; background:none; color:var(--mute); cursor:pointer; font-size:12px; padding:0 4px; margin-left:2px; }
-  .msg .via { font-size:11px; color:var(--mute); border:1px solid var(--line); border-radius:6px; padding:0 4px; margin-left:4px; }
   .mention { background:var(--accent2); border-radius:4px; padding:0 2px; }
   form.comp { display:flex; gap:8px; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--panel); }
   form.comp .clip { padding:0 12px; font-size:18px; }
@@ -103,13 +116,34 @@
   .mc .lis { margin:6px 0 0; }
   #mtable input.ty { width:120px; } #mtable input.mo { width:130px; }
   .tag.wk { border-color:#3fa66a; color:#3fa66a; } .tag.wk.off { border-color:var(--line); color:var(--mute); }
+  /* wake helper (admin): a plain-language status per bot, plus the fix */
+  .wkst { font-size:13px; line-height:1.5; min-width:180px; }
+  .wkst .pill2 { font-size:11px; font-weight:700; border-radius:999px; padding:1px 8px; white-space:nowrap; }
+  .wkst .pill2.ok { background:var(--goodbg); color:var(--good); } .wkst .pill2.warn { background:var(--warnbg); color:var(--warn); } .wkst .pill2.off { background:var(--accent2); color:var(--mute); }
+  .wkst .fix { color:var(--mute); font-size:12px; }
+  .wkst button { margin-top:4px; font-size:12px; padding:3px 10px; }
+  .keys td, .keys th { font-size:13px; }
+  .keys .st { font-weight:600; } .keys .st.exp { color:var(--bad); } .keys .st.mgd { color:var(--good); }
+  #menubtn { display:none; }
   nav .who { display:flex; align-items:center; gap:6px; } nav .who .mm { font-size:11px; color:var(--mute); margin-left:auto; }
   nav .seeall { font-size:12px; margin:6px 10px; padding:3px 10px; }
   @media (max-width: 720px) {
-    .wrap { grid-template-columns:1fr; } nav { display:none; } #roomsel { display:block; max-width:46vw; }
-    header .brand { display:none; } header { gap:6px; padding:10px; } #me { display:none; } header button { padding:6px 9px; }
-    header .ico { display:inline; } header .lbl { display:none; } #roomsel { max-width:none; flex:1; min-width:0; } header .sp { display:none; }
+    .wrap { grid-template-columns:1fr; }
+    /* the sidebar tucks away: a slide-over drawer from the left, opened with ☰ */
+    nav { display:block; position:fixed; top:0; left:0; bottom:0; width:min(300px,84vw); z-index:5; transform:translateX(-102%); transition:transform .18s ease; box-shadow:8px 0 24px rgba(0,0,0,.12); padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
+    nav.open { transform:none; }
+    nav:not(.open) { visibility:hidden; transition:transform .18s ease, visibility 0s .18s; }
+    #navscrim { position:fixed; inset:0; background:rgba(0,0,0,.25); z-index:4; }
+    #menubtn { display:inline-flex; }
+    #roomsel { display:none; }
+    header .brand { display:none; } header { gap:6px; padding:10px; } #me { display:none; } header button { padding:6px 9px; min-height:44px; }
+    header .ico { display:inline; } header .lbl { display:none; } header .sp { display:none; }
     #drawer { max-width:none; }
+    /* bigger tap targets on a phone */
+    nav .room { min-height:44px; padding:10px 12px; }
+    form.comp button { min-height:44px; padding:10px 14px; }
+    form.comp textarea { height:46px; }
+    .msg .av { width:36px; height:36px; }
   }
 </style>
 </head>
@@ -125,10 +159,12 @@
 </div>
 <div id="app" hidden>
   <header>
+    <button id="menubtn" title="Rooms">☰</button>
     <div class="brand">Bot Hub<small>We Live This Way</small></div>
     <select id="roomsel"></select>
     <div class="sp"></div>
     <span id="me" class="muted"></span>
+    <button id="themebtn" title="Theme: follow the system (tap to change)">🌓</button>
     <button id="notesbtn" hidden title="Class notes you've been given"><span class="ico">🎓</span><span class="lbl">Notes</span></button>
     <button id="hookbtn" title="Get a ping when you're mentioned"><span class="ico">⏰</span><span class="lbl">Wake webhook</span></button>
     <button id="membtn" title="Who's in the hub">👥 Members</button>
@@ -137,7 +173,7 @@
     <button id="out" title="Sign out"><span class="ico">🚪</span><span class="lbl">Sign out</span></button>
   </header>
   <div class="wrap">
-    <nav><div id="rooms"></div><h4 id="whoh">In this room</h4><div id="who"></div><button class="seeall" id="seeall">All members ›</button></nav>
+    <nav id="mainnav"><div id="rooms"></div><h4 id="whoh">In this room</h4><div id="who"></div><button class="seeall" id="seeall">All members ›</button></nav>
     <main>
       <div class="topic" id="topic"></div>
       <div id="clearedbar" class="clearedbar" hidden><span id="clearedtxt">You cleared this room for yourself.</span> <button type="button" id="unclearbtn">Show cleared messages</button></div>
@@ -147,6 +183,7 @@
     </main>
   </div>
 </div>
+<div id="navscrim" hidden></div>
 <div id="scrim" hidden></div>
 <aside id="drawer" aria-label="Members" aria-hidden="true">
   <div class="dh"><b>Members</b><span style="flex:1"></span><button id="dclose">Close</button></div>
@@ -157,7 +194,12 @@
 <dialog id="admin">
   <div style="display:flex;align-items:center"><b>Manage members</b><span class="sp" style="flex:1"></span><button id="aclose">Close</button></div>
   <div id="reqbox" class="reqs" hidden><h4 style="margin:12px 0 4px">Requests to join <span class="pill" id="reqcount"></span></h4><div id="reqlist"></div></div>
+  <div id="joinlink" hidden><p class="muted" id="joinlinktxt">One-tap join link — send it to them. Their claim code no longer works.</p><div class="keybox" id="joinlinkv"></div><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button id="joinlinkcopy">Copy link</button><button id="jointextcopy">Copy setup text</button></div><pre class="invite" id="jointext"></pre></div>
+  <div id="linkbox" hidden><p class="muted" id="linkboxtxt"></p><div class="keybox" id="linkboxv"></div><div style="margin-top:6px"><button id="linkboxcopy">Copy link</button></div></div>
   <div id="newkey" hidden><p class="muted">New key — copy it now, it won't be shown again.</p><div class="keybox" id="newkeyv"></div></div>
+  <h4>Keys</h4>
+  <p class="muted" style="margin:0 0 6px">Who holds a key, and whether the hub can make a one-tap sign-in link for them — plus a read-only owner view link you can send to whoever runs their bot. Keys are shown only to you, never logged.</p>
+  <table class="keys"><thead><tr><th>Name</th><th>Key</th><th>Status</th><th>Last seen</th><th></th></tr></thead><tbody id="ktable"></tbody></table>
   <table><thead><tr><th>Name</th><th>Role</th><th title="What the member runs on, and its model if known">Agent type · model</th><th>Machine</th><th title="Wakes on @mention">Wake</th><th title="Outbound HTTPS ping on @mention">Webhook</th><th title="Visitors' @mentions may wake this bot">Visitors may wake</th><th>Last seen</th><th></th></tr></thead><tbody id="mtable"></tbody></table>
   <label class="chk" style="margin-top:12px"><input type="checkbox" id="gwakes"> Let visitors' @mentions wake my bots (only the bots ticked above, at most <span id="gcap">10</span> an hour)</label>
   <h4>Add a bot</h4>
@@ -236,6 +278,70 @@ async function api(path, opts = {}) {
   if (!res.ok) throw Object.assign(new Error(body.error || ("HTTP " + res.status)), { status: res.status });
   return body;
 }
+// ----- theme (follow the system, or light / dark) -----
+const THEMES = ["auto", "light", "dark"];
+function themeApply() {
+  const t = localStorage.getItem("hubtheme") || "auto";
+  document.documentElement.dataset.theme = t === "auto" ? "" : t;
+  const b = $("themebtn"); if (b) { b.textContent = t === "dark" ? "☀️" : t === "light" ? "🌙" : "🌓"; b.title = "Theme: " + t + " (tap to change)"; }
+}
+$("themebtn").onclick = () => {
+  const t = localStorage.getItem("hubtheme") || "auto";
+  localStorage.setItem("hubtheme", THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]); themeApply();
+};
+themeApply();
+// ----- mobile rooms drawer (the sidebar tucks away on a phone) -----
+function openNav() { $("mainnav").classList.add("open"); $("navscrim").hidden = false; }
+function closeNav() { $("mainnav").classList.remove("open"); $("navscrim").hidden = true; }
+$("menubtn").onclick = () => ($("mainnav").classList.contains("open") ? closeNav() : openNav());
+$("navscrim").onclick = closeNav;
+// ----- unread counts (per-room last-read, kept on this device only) -----
+const readStore = {
+  get() { try { return JSON.parse(localStorage.getItem("hubread") || "{}"); } catch { return {}; } },
+  set(v) { try { localStorage.setItem("hubread", JSON.stringify(v)); } catch {} },
+};
+function markRead(name, lastIdV, countV) { const s = readStore.get(); s[name] = { lastId: lastIdV, count: countV }; readStore.set(s); }
+function unreadFor(x, stored) {
+  const st = stored[x.name];
+  if (!st) return 0; // first time seeing this room: start from here, no badge
+  if (x.lastId <= st.lastId) return 0;
+  if (x.messages <= (st.count || 0)) return 0; // room was cleared; the count dropped
+  return x.messages - (st.count || 0);
+}
+// ----- live messages (SSE): new posts arrive instantly; the 5s poll is the fallback -----
+let sse = null;
+function startPoll() { if (!timer) timer = setInterval(tick, 5000); }
+function stopPoll() { if (timer) { clearInterval(timer); timer = null; } }
+function connectSSE(name) {
+  disconnectSSE();
+  if (!key || !name || typeof EventSource === "undefined") { startPoll(); return; }
+  const es = new EventSource(`/api/rooms/${encodeURIComponent(name)}/events?key=${encodeURIComponent(key)}`);
+  sse = es;
+  es.addEventListener("open", () => stopPoll());
+  es.addEventListener("error", () => startPoll()); // stream dropped: polling resumes (EventSource keeps retrying)
+  es.addEventListener("hello", (e) => { try { const d = JSON.parse(e.data); if (d.lastId > lastId) tick(); } catch {} });
+  es.addEventListener("message", (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.room !== room) { loadRooms(); return; }
+      if (document.getElementById("m" + d.message.id)) return; // the poll already got it
+      const box = $("msgs"); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      if (!lastId) box.innerHTML = "";
+      box.insertAdjacentHTML("beforeend", render(d.message));
+      lastId = d.message.id;
+      markRead(room, lastId, (roomInfo[room]?.messages || 0) + 1);
+      if (atEnd) box.scrollTop = 1e9;
+    } catch {}
+  });
+  es.addEventListener("edited", (e) => {
+    try { const d = JSON.parse(e.data); if (d.room !== room) return;
+      const el = document.getElementById("m" + d.message.id); if (el) el.outerHTML = render(d.message); } catch {}
+  });
+  es.addEventListener("refresh", (e) => {
+    try { const d = JSON.parse(e.data); if (d.room === room) { openRoom(room); loadRooms(); } } catch {}
+  });
+}
+function disconnectSSE() { if (sse) { try { sse.close(); } catch {} sse = null; } }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const isPrivate = (name) => !!(roomInfo[name] && roomInfo[name].private);
 const lockHtml = (name) => isPrivate(name) ? '<span class="lock" title="Private, invite-only">🔒</span>' : "";
@@ -243,12 +349,12 @@ const fmt = (iso) => { const d = new Date(iso); const today = new Date().toDateS
   return today ? d.toLocaleTimeString([], { hour:"numeric", minute:"2-digit" }) : d.toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); };
 function showSignin(msg) { $("app").hidden = true; $("signin").hidden = false; $("serr").textContent = msg || ""; }
 $("sf").onsubmit = async (e) => { e.preventDefault(); key = $("keyin").value.trim(); try { await start(); store.set(key, $("remember").checked); $("keyin").value = ""; } catch (err) { showSignin(err.message); } };
-$("out").onclick = () => { closeDrawer(); store.clear(); key = ""; me = null; clearInterval(timer); showSignin("Signed out. The key was removed from this device."); };
+$("out").onclick = () => { closeDrawer(); closeNav(); disconnectSSE(); store.clear(); key = ""; me = null; clearInterval(timer); timer = null; showSignin("Signed out. The key was removed from this device."); };
 async function start() {
   me = await api("/api/me");
   $("signin").hidden = true; $("app").hidden = false;
   $("me").textContent = me.name + (me.guest ? " · visitor" : ""); $("clip").hidden = !me.canUpload; $("adminbtn").hidden = !me.admin; $("invbtn").hidden = !me.admin; $("notesbtn").hidden = !me.classNotes;
-  $("txt").placeholder = me.admin ? "Message… (@Name to mention, or /clear / /clearall)" : "Message… (@Name to mention, or /clear)";
+  $("txt").placeholder = me.admin ? "Message… (@Name to mention, or /clear / /clear5 / /clear10 / /clearall)" : "Message… (@Name to mention, or /clear / /clear5 / /clear10)";
   if (me.guest && !room) room = "visitors";
   await loadRooms(); await openRoom(room);
   clearInterval(timer); timer = setInterval(tick, 5000);
@@ -261,8 +367,16 @@ async function loadRooms() {
   roomInfo = Object.fromEntries(r.rooms.map((x) => [x.name, x]));
   dmInfo = Object.fromEntries(dms.map((x) => [x.name, x]));
   if (!r.rooms.find((x) => x.name === room) && !dms.find((x) => x.name === room)) room = r.rooms[0]?.name || "general";
-  const roomBtns = r.rooms.map((x) => `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}"># ${esc(x.name)}${x.private ? '<span class="lock" title="Private, invite-only">🔒</span>' : ""}<span class="n">${x.messages}</span></button>`).join("");
-  const dmBtns = dms.map((x) => `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}">${esc(x.title || x.peer || "Direct message")}<span class="lock" title="Private direct message">🔒</span><span class="n">${x.messages}</span></button>`).join("");
+  // unread: count new messages since this device last looked at each room; the room you're in is read.
+  const stored = readStore.get();
+  for (const x of [...r.rooms, ...dms]) if (!stored[x.name]) stored[x.name] = { lastId: x.lastId, count: x.messages };
+  const cur = [...r.rooms, ...dms].find((x) => x.name === room);
+  if (cur) stored[room] = { lastId: cur.lastId, count: cur.messages };
+  readStore.set(stored);
+  const roomBtns = r.rooms.map((x) => { const un = x.name === room ? 0 : unreadFor(x, stored);
+    return `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}"><span class="nm"># ${esc(x.name)}${x.private ? '<span class="lock" title="Private, invite-only">🔒</span>' : ""}</span><span class="mem" title="${x.members} member${x.members === 1 ? "" : "s"} in this room">👥 ${x.members}</span>${un ? `<span class="un">${un > 99 ? "99+" : un}</span>` : ""}<span class="n">${x.messages}</span></button>`; }).join("");
+  const dmBtns = dms.map((x) => { const un = x.name === room ? 0 : unreadFor(x, stored);
+    return `<button class="room ${x.name === room ? "on" : ""}" data-r="${esc(x.name)}"><span class="nm">${esc(x.title || x.peer || "Direct message")}<span class="lock" title="Private direct message">🔒</span></span>${un ? `<span class="un">${un > 99 ? "99+" : un}</span>` : ""}<span class="n">${x.messages}</span></button>`; }).join("");
   $("rooms").innerHTML = `<h4>Rooms</h4>${roomBtns}` +
     `<h4>Direct messages <span class="lock" title="Private">🔒</span></h4>${dmBtns || '<p class="muted" style="margin:6px 10px;font-size:13px">Message someone from the members panel.</p>'}`;
   $("roomsel").innerHTML = `<optgroup label="Rooms">${r.rooms.map((x) => `<option value="${esc(x.name)}" ${x.name === room ? "selected" : ""}>${esc(x.name)}${x.private ? " 🔒" : ""}</option>`).join("")}</optgroup>` +
@@ -340,7 +454,7 @@ $("membtn").onclick = () => ($("drawer").classList.contains("open") ? closeDrawe
 $("seeall").onclick = () => openDrawer("all");
 $("dclose").onclick = closeDrawer; $("scrim").onclick = closeDrawer;
 $("tabroom").onclick = () => { mtab = "room"; renderMembers(); }; $("taball").onclick = () => { mtab = "all"; renderMembers(); };
-addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeNav(); } });
 function atype(p) { return p ? `<span class="at p-${esc(p.toLowerCase().replace(/[^a-z0-9]+/g, "-"))}" title="Agent type">${esc(p)}</span>` : ""; }
 function serverTag(s) { return s ? `<span class="srv" title="Runs on ${esc(s)}">🖥 ${esc(s)}</span>` : ""; }
 const fsize = (n) => n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
@@ -393,14 +507,18 @@ $("fpick").onchange = async () => {
   try { await api(`/api/rooms/${encodeURIComponent(room)}/files`, { method:"POST", body: JSON.stringify({ name: f.name, content: await f.text(), text: note }) }); $("txt").value = ""; tick(); }
   catch (err) { alert(err.message); }
 };
+function avatarHue(name) { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) % 360; return h; }
 function render(m) {
   const body = esc(m.text).replace(/(^|\s)(@[\w.-]+)/g, '$1<span class="mention">$2</span>');
   const forMe = me && (m.mentions || []).some((n) => n.toLowerCase() === me.name.toLowerCase());
-  return `<div class="msg${m.via === "system" ? " sys" : ""}${forMe ? " hi" : ""}" id="m${m.id}"><span class="a">${esc(m.author)}</span>${atype(m.authorType)}${serverTag(m.server)}<span class="t">${fmt(m.at)} · #${m.id}</span>${m.visitor ? '<span class="via">visitor</span>' : ""}${m.via === "wake" ? '<span class="via">woken</span>' : ""}${m.edited ? `<span class="via" title="Edited ${esc(fmt(m.edited))}">edited</span>` : ""}${me && !me.guest && m.author === me.name && m.via !== "system" ? `<button class="ed" data-edit="${m.id}" title="Edit your message">✎</button>` : ""}
-    ${m.replyTo ? `<div class="r">↳ reply to #${m.replyTo}</div>` : ""}<div class="b">${body}</div>${m.file ? `<div class="file"><span>📎</span><span class="fn">${esc(m.file.name)}</span><span class="muted">${m.file.size == null ? "" : fsize(m.file.size)} · file ${m.file.id}</span><button data-fdl="${m.file.id}" data-fname="${esc(m.file.name)}">Download</button><button data-fview="${m.file.id}">View</button>${m.file.publicUrl ? `<button data-flink="${esc(m.file.publicUrl)}" title="Copy a download link anyone can open">Link</button>` : ""}</div>` : ""}</div>`;
+  const mine = me && m.author === me.name && m.via !== "system";
+  const initial = (m.author || "?").trim().charAt(0).toUpperCase();
+  return `<div class="msg${m.via === "system" ? " sys" : ""}${forMe ? " hi" : ""}${mine ? " mine" : ""}" id="m${m.id}"><span class="av" style="--h:${avatarHue(m.author)}" title="${esc(m.author)}">${esc(initial)}</span><div class="body"><div class="head"><span class="a">${esc(m.author)}</span>${atype(m.authorType)}${serverTag(m.server)}<span class="t">${fmt(m.at)} · #${m.id}</span>${m.visitor ? '<span class="via">visitor</span>' : ""}${m.via === "wake" ? '<span class="via">woken</span>' : ""}${m.edited ? `<span class="via" title="Edited ${esc(fmt(m.edited))}">edited</span>` : ""}${me && !me.guest && m.author === me.name && m.via !== "system" ? `<button class="ed" data-edit="${m.id}" title="Edit your message">✎</button>` : ""}</div>
+    ${m.replyTo ? `<div class="r">↳ reply to #${m.replyTo}</div>` : ""}<div class="b">${body}</div>${m.file ? `<div class="file"><span>📎</span><span class="fn">${esc(m.file.name)}</span><span class="muted">${m.file.size == null ? "" : fsize(m.file.size)} · file ${m.file.id}</span><button data-fdl="${m.file.id}" data-fname="${esc(m.file.name)}">Download</button><button data-fview="${m.file.id}">View</button>${m.file.publicUrl ? `<button data-flink="${esc(m.file.publicUrl)}" title="Copy a download link anyone can open">Link</button>` : ""}</div>` : ""}</div></div>`;
 }
 async function openRoom(name) {
   room = name; localStorage.setItem("hubroom", room);
+  closeNav();
   document.querySelectorAll(".room").forEach((b) => b.classList.toggle("on", b.dataset.r === room));
   const r = await api(`/api/rooms/${encodeURIComponent(room)}/messages?limit=100`);
   if (r.dm) dmInfo[r.room] = { ...dmInfo[r.room], ...r };
@@ -414,7 +532,12 @@ async function openRoom(name) {
   }
   $("msgs").innerHTML = r.messages.map(render).join("") || '<p class="muted">No messages yet.</p>';
   lastId = r.messages.at(-1)?.id || 0; editSeen = r.now || 0; transcriptAt = r.transcriptAt || 0; clearedThrough = r.clearedThrough || 0; $("clearedbar").hidden = !clearedThrough; $("msgs").scrollTop = 1e9;
-  $("clearedtxt").textContent = isDmName(room) ? "You cleared this conversation for yourself." : "You cleared this room for yourself.";
+  markRead(room, lastId, roomInfo[room]?.messages ?? r.messages.length);
+  connectSSE(room);
+  const kept = r.keptAfterClear || 0;
+  $("clearedtxt").textContent = kept > 0
+    ? (isDmName(room) ? `You cleared everything but the last ${kept} message${kept === 1 ? "" : "s"} in this conversation for yourself.` : `You cleared everything but the last ${kept} message${kept === 1 ? "" : "s"} in this room for yourself.`)
+    : (isDmName(room) ? "You cleared this conversation for yourself." : "You cleared this room for yourself.");
   loadWho();
 }
 async function tick() {
@@ -424,8 +547,10 @@ async function tick() {
     // v0.8: edited messages (e.g. a bot's "⏳ On it" note turning into its answer) update in place
     for (const m of r.edited || []) { const el = document.getElementById("m" + m.id); if (el) el.outerHTML = render(m); }
     if (r.now) editSeen = r.now - 2000;
-    if (r.messages.length) { const box = $("msgs"); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      if (!lastId) box.innerHTML = ""; box.insertAdjacentHTML("beforeend", r.messages.map(render).join("")); lastId = r.messages.at(-1).id; if (atEnd) box.scrollTop = 1e9; }
+    const fresh = r.messages.filter((m) => !document.getElementById("m" + m.id)); // the live stream may have got it first
+    if (fresh.length) { const box = $("msgs"); const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      if (!lastId) box.innerHTML = ""; box.insertAdjacentHTML("beforeend", fresh.map(render).join("")); lastId = fresh.at(-1).id;
+      if (roomInfo[room]) markRead(room, lastId, roomInfo[room].messages); if (atEnd) box.scrollTop = 1e9; }
     await loadRooms();
   } catch (e) { if (e.status === 401) showSignin("Your key no longer works."); }
 }
@@ -439,6 +564,15 @@ $("comp").onsubmit = async (e) => { e.preventDefault(); const t = $("txt").value
     $("txt").value = "";
     if (!confirm("Clear "+roomTitle(room)+" for you only?")) return;
     try { await api(`/api/rooms/${encodeURIComponent(room)}/personal-clear`, { method:"POST", body: "{}" }); await openRoom(room); await loadRooms(); }
+    catch (err) { alert(err.message); }
+    return;
+  }
+  const clearN = t.match(/^\/clear([1-9]|[1-4][0-9]|50)$/);
+  if (clearN) {
+    $("txt").value = "";
+    const keep = Number(clearN[1]);
+    if (!confirm(`Clear ${roomTitle(room)} for you only, keeping the last ${keep} message${keep === 1 ? "" : "s"}?`)) return;
+    try { await api(`/api/rooms/${encodeURIComponent(room)}/personal-clear-keep`, { method:"POST", body: JSON.stringify({ keep }) }); await openRoom(room); await loadRooms(); }
     catch (err) { alert(err.message); }
     return;
   }
@@ -535,14 +669,67 @@ async function loadRequests() {
     const q = r.requests.find((x) => x.id == b.dataset.ok); const as = b.dataset.as;
     if (as === "member" && !confirm(`Approve ${q.name} as a full member? Members can read and post in every room, including staff rooms.`)) return;
     b.disabled = true;
-    try { await api(`/api/admin/requests/${q.id}/approve`, { method:"POST", body: JSON.stringify({ as, days: Number(document.querySelector(`[data-days="${q.id}"]`).value) }) });
-      $("aerr").textContent = `Approved ${q.name} as a ${as === "member" ? "member" : "visitor"}. Their page will show the key once (they have 24 hours to pick it up).`; loadMembers(); loadWho(); }
+    try { const x = await api(`/api/admin/requests/${q.id}/approve`, { method:"POST", body: JSON.stringify({ as, mint: true, days: Number(document.querySelector(`[data-days="${q.id}"]`).value) }) });
+      // One tap: approved AND the join link is ready. The claim code stops working — this link is the way in.
+      $("aerr").textContent = `Approved ${q.name} as a ${as === "member" ? "member" : "visitor"}. Send them the join link below — one tap signs them in.`;
+      $("joinlinktxt").textContent = `One-tap join link for ${q.name} — send it to them. Their claim code no longer works.`;
+      $("joinlinkv").textContent = x.links.public;
+      $("jointext").textContent = x.text || "";
+      $("joinlink").hidden = false;
+      loadMembers(); loadWho(); }
     catch (e) { $("aerr").textContent = e.message; b.disabled = false; } });
   document.querySelectorAll("[data-no]").forEach((b) => b.onclick = async () => {
     const q = r.requests.find((x) => x.id == b.dataset.no); if (!confirm(`Deny ${q.name}'s request?`)) return;
     try { await api(`/api/admin/requests/${q.id}/deny`, { method:"POST", body: "{}" }); loadRequests(); } catch (e) { $("aerr").textContent = e.message; } });
 }
 function showKey(k) { $("newkeyv").textContent = k; $("newkey").hidden = false; }
+// Copy buttons for the join link / sign-in link boxes (keys are copied, never logged).
+$("joinlinkcopy").onclick = async () => { try { await navigator.clipboard.writeText($("joinlinkv").textContent); $("joinlinkcopy").textContent = "Copied"; setTimeout(() => $("joinlinkcopy").textContent = "Copy link", 1500); } catch { prompt("Join link:", $("joinlinkv").textContent); } };
+$("jointextcopy").onclick = async () => { try { await navigator.clipboard.writeText($("jointext").textContent); $("jointextcopy").textContent = "Copied"; setTimeout(() => $("jointextcopy").textContent = "Copy setup text", 1500); } catch { prompt("Setup text:", $("jointext").textContent); } };
+$("linkboxcopy").onclick = async () => { try { await navigator.clipboard.writeText($("linkboxv").textContent); $("linkboxcopy").textContent = "Copied"; setTimeout(() => $("linkboxcopy").textContent = "Copy link", 1500); } catch { prompt("Link:", $("linkboxv").textContent); } };
+// ----- wake helper: plain-language status per bot, plus exactly what's missing and how to fix it -----
+function wakeStatus(m) {
+  if (m.kind !== "bot") return null;
+  if (m.canWake) {
+    const path = m.webhook?.set ? "a webhook" : m.wakeVia === "poll" ? "its machine checks in" : "the hub calls it directly";
+    return { cls: "ok", pill: "Wakes on @mention", text: `Wakes when someone @mentions it (${path}).`, fix: "" };
+  }
+  if (!m.wake) {
+    const ready = m.webhook?.set ? "A wake webhook is set" : m.ombBotId ? "It's linked to OpenMausBot" : "";
+    return { cls: "off", pill: "Wake is off", text: `Wake is off, so @mentions won't reach it.${ready ? " " + ready + " — turn wake on and it will." : ""}`,
+      fix: (m.webhook?.set || m.ombBotId) ? "Turn wake on below." : "Link its OpenMausBot id, add a wake webhook, or set up a poll agent, then turn wake on." };
+  }
+  // Wake is on, but the hub still can't reach it — say why.
+  const isRakazo = String(m.platform || "").toLowerCase().includes("rakazo");
+  if (isRakazo)
+    return { cls: "warn", pill: "Doesn't wake on @mention", text: "Rakazo bots don't pick up hub @mentions — the hub has no way to reach this one.",
+      fix: "Fix: add a wake webhook (if its platform can receive one), or have the bot poll the hub itself (MCP or REST). Then it can reply." };
+  if (!m.ombBotId && !(m.webhook?.set))
+    return { cls: "warn", pill: "No wake path", text: "This bot isn't on OpenMausBot and has no wake webhook — the hub has no way to reach it.",
+      fix: "Fix: link its OpenMausBot id, add a wake webhook, or set up a poll agent." };
+  if (m.ombBotId && m.wakeVia === "poll")
+    return { cls: "warn", pill: "Wake is on · machine offline", text: `Wake is on, but its machine hasn't checked in lately (last seen ${ago(m.lastSeen)}).`,
+      fix: "Fix: get the machine back online — its poll agent checks in about once a minute." };
+  if (m.ombBotId)
+    return { cls: "warn", pill: "Wake is on · no wake key", text: "Wake is on, but the hub has no wake key or hook for this OpenMausBot id.",
+      fix: "Fix: check the OpenMausBot setup on its machine (wake-keys.json / wake-hooks.json)." };
+  return { cls: "warn", pill: "No wake path", text: "Wake is on but there's no way to reach this bot.",
+    fix: "Fix: link its OpenMausBot id, add a wake webhook, or set up a poll agent." };
+}
+function wakeCell(m) {
+  const s = wakeStatus(m);
+  if (!s) return "";
+  const toggle = `<button data-waketoggle="${m.id}" title="Turn wake ${m.wake ? "off" : "on"}">Wake: ${m.wake ? "on" : "off"}</button>`;
+  return `<div class="wkst"><span class="pill2 ${s.cls}">${esc(s.pill)}</span><div>${esc(s.text)}</div>${s.fix ? `<div class="fix">${esc(s.fix)}</div>` : ""}${toggle}</div>`;
+}
+// ----- keys view: each member's key status, with a one-tap link and rotate -----
+function keyStatus(m) {
+  const expired = m.expiresAt && m.expiresAt < Date.now();
+  const when = m.expiresAt ? (expired ? "expired " + new Date(m.expiresAt).toLocaleDateString([], { month: "short", day: "numeric" }) : "until " + new Date(m.expiresAt).toLocaleDateString([], { month: "short", day: "numeric" })) : "no expiry";
+  if (expired) return { cls: "exp", text: "Expired · " + when };
+  if (m.managedKey || m.admin) return { cls: "mgd", text: "On this machine · " + when };
+  return { cls: "", text: "On their machine · " + when };
+}
 async function loadMembers() {
   const r = await api("/api/admin/members");
   const s = await api("/api/admin/settings"); $("gwakes").checked = s.guestWakes; $("gcap").textContent = s.guestWakeHourlyCap;
@@ -550,11 +737,44 @@ async function loadMembers() {
   $("mtable").innerHTML = r.members.map((m) => `<tr><td>${esc(m.name)}</td><td class="muted">${m.role}${m.guest ? exp(m) : ""}</td>
     <td><input class="ty" data-pt="${m.id}" list="agenttypes" maxlength="30" placeholder="${m.kind === "human" ? "person" : "Agent type"}" value="${esc(m.platform || "")}"> <input class="mo" data-md="${m.id}" maxlength="30" placeholder="model" value="${esc(m.model || "")}"></td>
     <td class="muted">${esc(m.machine || "—")}</td>
-    <td>${m.kind === "bot" && !m.guest ? `<input type="checkbox" data-wake="${m.id}" ${m.wake ? "checked" : ""} ${m.ombBotId || (m.webhook && m.webhook.set) ? "" : "disabled"} title="${m.canWake ? "wake-ups work" : "needs an OpenMausBot id, a wake webhook, or a poll agent"}">` : (m.kind === "bot" && m.webhook && m.webhook.set ? '<span class="muted">webhook</span>' : "")}</td>
+    <td>${m.kind === "bot" && !m.guest ? wakeCell(m) : (m.kind === "bot" && m.webhook && m.webhook.set ? '<span class="muted">webhook</span>' : "")}</td>
     <td>${m.kind === "bot" ? `${m.webhook && m.webhook.set ? `<span class="muted" title="${esc(m.webhook.url)}${m.webhook.header ? ` · header ${esc(m.webhook.header)}` : ""}">${esc(m.webhook.url)}</span> ` : ""}<button data-hook="${m.id}">${m.webhook && m.webhook.set ? "Edit hook" : "Set hook"}</button>` : ""}</td>
     <td>${m.kind === "bot" && !m.guest && m.ombBotId ? `<input type="checkbox" data-gw="${m.id}" ${m.guestWake ? "checked" : ""}>` : ""}</td>
     <td class="muted">${m.lastSeen ? fmt(new Date(m.lastSeen).toISOString()) : "—"}</td>
     <td>${m.admin ? "" : `<button data-role="${m.id}" title="${m.guest ? "Let them into every room" : "Limit them to rooms open to visitors"}">${m.guest ? "Make member" : "Make visitor"}</button> `}${m.admin || m.guest ? "" : `<button data-upl="${m.id}" title="May they share .md/.txt files?">${m.uploader ? "Uploads: on" : "Uploads: off"}</button> `}${m.guest ? "" : `<button data-rot="${m.id}">New key</button> `}${m.admin ? "" : `<button data-del="${m.id}">${m.guest ? "Revoke" : "Remove"}</button>`}</td></tr>`).join("");
+  // Keys view: status per member, a one-tap sign-in link (only when the hub holds the key), and rotate.
+  $("ktable").innerHTML = r.members.map((m) => { const ks = keyStatus(m);
+    return `<tr><td>${esc(m.name)}</td><td class="muted">${m.admin ? "admin" : m.managedKey ? "managed" : "hash only"}</td>
+    <td class="st ${ks.cls}">${esc(ks.text)}</td><td class="muted">${m.lastSeen ? fmt(new Date(m.lastSeen).toISOString()) : "never used"}</td>
+    <td>${(m.admin || m.managedKey) ? `<button data-link="${m.id}">Copy sign-in link</button> ` : `<span class="muted" title="The key lives on their machine; the hub only keeps a fingerprint">no link here</span> `}${m.admin ? "" : `<button data-krot="${m.id}">New key</button> `}${m.admin ? "" : `<button data-owner="${m.id}" title="A read-only link showing what ${esc(m.name)} sees. It can never sign in or post as them. Making a new one stops the old one working.">${m.ownerLink ? "New owner view link" : "Make owner view link"}</button> `}${m.ownerLink ? `<button data-ownerrev="${m.id}" title="Stop the owner view link working">Revoke owner link</button>` : ""}</td></tr>`; }).join("");
+  document.querySelectorAll("[data-link]").forEach((b) => b.onclick = async () => {
+    const m = r.members.find((x) => x.id == b.dataset.link);
+    try { const x = await api(`/api/admin/members/${m.id}/login-link`);
+      $("linkboxtxt").textContent = `One-tap sign-in link for ${m.name} — paste it in a browser to sign in as them.`;
+      $("linkboxv").textContent = x.links.public; $("linkbox").hidden = false; }
+    catch (e) { $("aerr").textContent = e.message; } });
+  // Owner view link: read-only window into what a member sees. Shown once when made (like a new key).
+  document.querySelectorAll("[data-owner]").forEach((b) => b.onclick = async () => {
+    const m = r.members.find((x) => x.id == b.dataset.owner);
+    if (m.ownerLink && !confirm(`Make a new owner view link for ${m.name}? The current one stops working.`)) return;
+    try { const x = await api(`/api/admin/members/${m.id}/owner-link`, { method:"POST" });
+      $("linkboxtxt").textContent = `Read-only owner view for ${m.name} — shows what they see in the hub, but can't post, edit, or sign in as them. Copy it now; it won't be shown again.`;
+      $("linkboxv").textContent = x.url; $("linkbox").hidden = false; loadMembers(); }
+    catch (e) { $("aerr").textContent = e.message; } });
+  document.querySelectorAll("[data-ownerrev]").forEach((b) => b.onclick = async () => {
+    const m = r.members.find((x) => x.id == b.dataset.ownerrev);
+    if (!confirm(`Revoke ${m.name}'s owner view link? It stops working right away.`)) return;
+    try { await api(`/api/admin/members/${m.id}/owner-link`, { method:"DELETE" }); $("aerr").textContent = `Owner view link for ${m.name} revoked.`; loadMembers(); }
+    catch (e) { $("aerr").textContent = e.message; } });
+  document.querySelectorAll("[data-krot]").forEach((b) => b.onclick = async () => {
+    const m = r.members.find((x) => x.id == b.dataset.krot);
+    if (!confirm(`Make a new key for ${m.name}? The old one stops working.${m.managedKey ? " (Its local bridge picks up the new key automatically.)" : ""}`)) return;
+    try { const x = await api(`/api/admin/members/${m.id}/rotate`, { method:"POST" }); showKey(x.key); } catch (e) { $("aerr").textContent = e.message; } });
+  // Wake toggle (the button in the wake helper).
+  document.querySelectorAll("[data-waketoggle]").forEach((b) => b.onclick = async () => {
+    const m = r.members.find((x) => x.id == b.dataset.waketoggle);
+    try { await api(`/api/admin/members/${m.id}`, { method:"PATCH", body: JSON.stringify({ wake: !m.wake }) }); loadMembers(); }
+    catch (e) { $("aerr").textContent = e.message; } });
   document.querySelectorAll("[data-upl]").forEach((b) => b.onclick = async () => {
     const m = r.members.find((x) => x.id == b.dataset.upl);
     if (!m.uploader && !confirm(`Let ${m.name} share files? Anything shared can be downloaded by anyone with its link.`)) return;
@@ -600,12 +820,10 @@ async function loadMembers() {
   document.querySelectorAll("[data-rot]").forEach((b) => b.onclick = async () => {
     const m = r.members.find((x) => x.id == b.dataset.rot);
     if (!confirm(`Make a new key for ${m.name}? The old one stops working.${m.managedKey ? " (Its local bridge picks up the new key automatically.)" : ""}`)) return;
-    try { const x = await api(`/api/admin/members/${m.id}/rotate`, { method:"POST" }); if (m.admin) { key = x.key; store.set(key, !!localStorage.getItem("hubkey")); } showKey(x.key); } catch (e) { $("aerr").textContent = e.message; } });
+    try { const x = await api(`/api/admin/members/${m.id}/rotate`, { method:"POST" }); if (m.admin) { key = x.key; store.set(key, !!localStorage.getItem("hubkey")); disconnectSSE(); connectSSE(room); } showKey(x.key); } catch (e) { $("aerr").textContent = e.message; } });
   document.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
     const m = r.members.find((x) => x.id == b.dataset.del); if (!confirm(m.guest ? `Revoke ${m.name}'s visitor key? It stops working right away.` : `Remove ${m.name} from the hub?`)) return;
     try { await api(`/api/admin/members/${m.id}`, { method:"DELETE" }); loadMembers(); } catch (e) { $("aerr").textContent = e.message; } });
-  document.querySelectorAll("[data-wake]").forEach((c) => c.onchange = async () => {
-    try { await api(`/api/admin/members/${c.dataset.wake}`, { method:"PATCH", body: JSON.stringify({ wake: c.checked }) }); } catch (e) { $("aerr").textContent = e.message; } });
   document.querySelectorAll("[data-hook]").forEach((b) => b.onclick = () => {
     const m = r.members.find((x) => x.id == b.dataset.hook);
     if (m) openHookDialog({ kind: "admin", id: m.id, name: m.name });

@@ -41,6 +41,8 @@ export const CLASS_WAKE_SLUGS = envSet("BOT_HUB_CLASS_WAKE");
 /** These bots (member slugs, BOT_HUB_NEVER_GUEST_WAKE) must never be woken by a visitor, even if guest_wake is ticked. */
 export const NEVER_GUEST_WAKE_SLUGS = envSet("BOT_HUB_NEVER_GUEST_WAKE");
 export const RESERVED_GROUP_NAMES = new Set(["class", "all", "everyone", "here"]);
+/** /clear<N> (N 1-50): keep the last N messages for yourself only. */
+const CLEAR_N = /^\/clear([1-9]|[1-4][0-9]|50)$/;
 /** v0.11: quiz/answer keys are never handed out or delivered, whatever the grant says. */
 export const isQuizKeyName = (name) => /(quiz|test|exam)[\s._-]*(key|answers?)|answer[\s._-]*key|answers?[\s._-]*sheet/i.test(String(name ?? ""));
 export const NOTE_LINK_DAYS = Math.max(1, Math.min(30, Number(process.env.BOT_HUB_NOTE_LINK_DAYS) || 7));
@@ -98,6 +100,24 @@ export class Hub {
     mkdirSync(this.keysDir, { recursive: true, mode: 0o700 });
     chmodSync(this.keysDir, 0o700);
     this.listeners = new Set();
+    // Live-message subscribers (SSE): notified on every post/edit/clear.
+    // Separate from `listeners` so a UI update never wakes anyone.
+    this.events = new Set();
+  }
+
+  /** Notify live-message (SSE) subscribers. Never used to wake bots. */
+  emitEvent(ev) {
+    for (const fn of this.events) { try { fn(ev); } catch (e) { console.error("event", e); } }
+  }
+
+  /** One-tap sign-in links for a member whose key is stored on this machine (the admin, or a managed-key bot).
+   * Returns null when the hub only holds a hash — the key lives on the member's machine. */
+  loginLinksFor(member) {
+    if (!member) return null;
+    const file = member.is_admin ? join(this.dataDir, "admin.key") : member.managed_key ? join(this.keysDir, `${member.slug}.key`) : null;
+    if (!file) return null;
+    const key = readSecretFile(file);
+    return key ? loginLinks(key) : null;
   }
 
   seed() {
@@ -357,6 +377,16 @@ export class Hub {
     this.db.prepare("DELETE FROM rooms WHERE id = ?").run(r.id);
     return { removed: r.name };
   }
+  /** How many hub members can see (are "in") a room: mirrors canSee. Private rooms count the roster + admin; open rooms count every member, plus guests when open to visitors. */
+  roomMemberCount(room) {
+    const all = this.db.prepare("SELECT id, role, is_admin FROM members").all();
+    const onRoster = new Set(this.roster(room).map((m) => m.id));
+    return all.filter((m) => {
+      if (room.private) return !!m.is_admin || (onRoster.has(m.id) && (m.role !== "guest" || !!room.visitors));
+      return m.role !== "guest" || !!room.visitors;
+    }).length;
+  }
+
   rooms(viewer = null, { personal = false } = {}) {
     const floorSql = personal && viewer
       ? "AND m.id > COALESCE((SELECT c.cleared_through FROM member_clears c WHERE c.member_id = ? AND c.room_id = r.id), 0)"
@@ -369,7 +399,7 @@ export class Hub {
       FROM rooms r WHERE r.kind != 'dm' ORDER BY r.name`).all(...(personal && viewer ? [viewer.id, viewer.id, viewer.id] : [])).filter((r) => this.canSee(viewer, r));
     return rows.map((r) => {
       const last = r.last_id ? this.db.prepare("SELECT author_name, text, created_at FROM messages WHERE id = ?").get(r.last_id) : null;
-      return { name: r.name, topic: r.topic, visitors: !!r.visitors, private: !!r.private, transcriptAt: r.transcript_at ?? 0,
+      return { name: r.name, topic: r.topic, visitors: !!r.visitors, private: !!r.private, transcriptAt: r.transcript_at ?? 0, members: this.roomMemberCount(r),
         ...(r.private && viewer && !isGuest(viewer) ? { roster: this.roster(r).map((x) => x.name) } : {}), listeners: isGuest(viewer) ? undefined : this.roomListeners(r.name).map((x) => x.name), messages: r.messages, lastId: r.last_id ?? 0, lastAt: r.last_at ?? null,
         last: last ? { author: last.author_name, text: last.text.slice(0, 160), at: last.created_at } : null };
     });
@@ -512,17 +542,22 @@ export class Hub {
     if (!viewer) return 0;
     return this.db.prepare("SELECT cleared_through AS t FROM member_clears WHERE member_id = ? AND room_id = ?").get(viewer.id, roomId)?.t ?? 0;
   }
+  viewClear(viewer, roomId) {
+    if (!viewer) return { through: 0, kept: 0 };
+    return this.db.prepare("SELECT cleared_through AS through, COALESCE(kept, 0) AS kept FROM member_clears WHERE member_id = ? AND room_id = ?").get(viewer.id, roomId) ?? { through: 0, kept: 0 };
+  }
   read(roomName, { since = 0, limit = 30, before, editedSince, personal = false } = {}, viewer = null) {
     const r = this.roomFor(viewer, roomName);
     limit = Math.max(1, Math.min(200, Number(limit) || 30));
-    const floor = personal ? this.viewClearedThrough(viewer, r.id) : 0;
+    const clear = personal ? this.viewClear(viewer, r.id) : { through: 0, kept: 0 };
+    const floor = clear.through;
     let rows;
     if (before) rows = this.db.prepare("SELECT * FROM messages WHERE room_id = ? AND archived_at IS NULL AND id > ? AND id < ? ORDER BY id DESC LIMIT ?").all(r.id, floor, Number(before), limit).reverse();
     else if (Number(since) > 0) rows = this.db.prepare("SELECT * FROM messages WHERE room_id = ? AND archived_at IS NULL AND id > ? AND id > ? ORDER BY id ASC LIMIT ?").all(r.id, floor, Number(since), limit);
     else rows = this.db.prepare("SELECT * FROM messages WHERE room_id = ? AND archived_at IS NULL AND id > ? ORDER BY id DESC LIMIT ?").all(r.id, floor, limit).reverse();
     const types = this.agentTypes();
     const files = this.fileMap(rows);
-    const out = { room: r.name, topic: r.topic, transcriptAt: r.transcript_at ?? 0, clearedThrough: personal ? floor : 0, messages: rows.map((x) => publicMessage(x, types, files)), now: Date.now(), ...this.dmPublic(r, viewer) };
+    const out = { room: r.name, topic: r.topic, transcriptAt: r.transcript_at ?? 0, clearedThrough: personal ? floor : 0, keptAfterClear: personal ? clear.kept : 0, messages: rows.map((x) => publicMessage(x, types, files)), now: Date.now(), ...this.dmPublic(r, viewer) };
     // v0.8: messages edited since the caller's last look (by the server clock it was given as `now`), so an open view can
     // update them in place. Only ones the caller already has (id <= since); newer ones come in `messages` anyway.
     if (Number(editedSince) > 0) {
@@ -795,6 +830,119 @@ export class Hub {
     const m = this.member(l.member_id);
     return { id: f.id, name: f.name, size: f.size, content: f.content, link: l.id, member: m?.name ?? null };
   }
+
+  // ---------- read-only owner view links ----------
+  // A token that shows what one member sees, but can never sign in or post as them.
+  // Only the sha256 hash is stored (like keys); the token itself is shown once, to the admin.
+  // The `hubowner_` prefix is deliberate: the log redactor already masks hub…_ tokens.
+  ownerLinkFor(memberId) {
+    return this.db.prepare("SELECT * FROM owner_links WHERE member_id = ? AND revoked_at IS NULL ORDER BY id DESC LIMIT 1").get(Number(memberId)) ?? null;
+  }
+  ownerLinkStatus(memberId) {
+    const m = this.member(memberId);
+    if (!m) throw httpError(404, "No such member");
+    const l = this.ownerLinkFor(m.id);
+    return l ? { active: true, createdAt: l.created_at } : { active: false };
+  }
+  mintOwnerLink(memberId) {
+    const m = this.member(memberId);
+    if (!m) throw httpError(404, "No such member");
+    // One live link per member: minting a new one stops the old one working.
+    const now = Date.now();
+    this.db.prepare("UPDATE owner_links SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL").run(now, m.id);
+    const token = `hubowner_${randomBytes(32).toString("base64url")}`;
+    const r = this.db.prepare("INSERT INTO owner_links(member_id, token_hash, created_at) VALUES (?,?,?)").run(m.id, hashKey(token), now);
+    return { url: `${PUBLIC_URL}/owner/${token}`, createdAt: now, id: Number(r.lastInsertRowid) };
+  }
+  revokeOwnerLink(memberId) {
+    const m = this.member(memberId);
+    if (!m) throw httpError(404, "No such member");
+    const r = this.db.prepare("UPDATE owner_links SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL").run(Date.now(), m.id);
+    return { revoked: !!r.changes };
+  }
+  /** Resolve an owner-view token to its member, or throw. The token is not a key: it is never
+   * looked up in members, so it can never sign in, post, or call the MCP. */
+  ownerMember(token) {
+    if (!/^hubowner_[A-Za-z0-9_-]{43}$/.test(String(token ?? ""))) throw httpError(404, "No such link");
+    const l = this.db.prepare("SELECT * FROM owner_links WHERE token_hash = ?").get(hashKey(String(token)));
+    if (!l) throw httpError(404, "No such link");
+    if (l.revoked_at) throw httpError(410, "This owner view link was revoked. Ask the hub admin for a new one.");
+    const m = this.member(l.member_id);
+    if (!m) throw httpError(404, "No such link");
+    return m;
+  }
+  /** Plain-language wake status for a bot: the same sentences as the wake helper in the admin UI.
+   * `canWake` / `webhookSet` carry the live bits the hub itself can't see (from the waker). */
+  wakeStatusFor(m, { canWake = false, webhookSet = false } = {}) {
+    if (!m || m.kind !== "bot") return null;
+    const ago = (t) => {
+      if (!t) return "never";
+      const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+      if (s < 60) return "just now";
+      if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      return `${Math.floor(s / 86400)}d ago`;
+    };
+    if (canWake) {
+      const path = webhookSet ? "a webhook" : m.wake_via === "poll" ? "its machine checks in" : "the hub calls it directly";
+      return { cls: "ok", pill: "Wakes on @mention", text: `Wakes when someone @mentions it (${path}).`, fix: "" };
+    }
+    if (!m.wake) {
+      const ready = webhookSet ? "A wake webhook is set" : m.omb_bot_id ? "It's linked to OpenMausBot" : "";
+      return { cls: "off", pill: "Wake is off", text: `Wake is off, so @mentions won't reach it.${ready ? " " + ready + " — turn wake on and it will." : ""}`,
+        fix: (webhookSet || m.omb_bot_id) ? "Turn wake on (ask the hub admin)." : "Link its OpenMausBot id, add a wake webhook, or set up a poll agent, then turn wake on." };
+    }
+    const isRakazo = String(m.platform || "").toLowerCase().includes("rakazo");
+    if (isRakazo)
+      return { cls: "warn", pill: "Doesn't wake on @mention", text: "Rakazo bots don't pick up hub @mentions — the hub has no way to reach this one.",
+        fix: "Fix: add a wake webhook (if its platform can receive one), or have the bot poll the hub itself (MCP or REST). Then it can reply." };
+    if (!m.omb_bot_id && !webhookSet)
+      return { cls: "warn", pill: "No wake path", text: "This bot isn't on OpenMausBot and has no wake webhook — the hub has no way to reach it.",
+        fix: "Fix: link its OpenMausBot id, add a wake webhook, or set up a poll agent." };
+    if (m.omb_bot_id && m.wake_via === "poll")
+      return { cls: "warn", pill: "Wake is on · machine offline", text: `Wake is on, but its machine hasn't checked in lately (last seen ${ago(m.last_seen)}).`,
+        fix: "Fix: get the machine back online — its poll agent checks in about once a minute." };
+    if (m.omb_bot_id)
+      return { cls: "warn", pill: "Wake is on · no wake key", text: "Wake is on, but the hub has no wake key or hook for this OpenMausBot id.",
+        fix: "Fix: check the OpenMausBot setup on its machine (wake-keys.json / wake-hooks.json)." };
+    return { cls: "warn", pill: "No wake path", text: "Wake is on but there's no way to reach this bot.",
+      fix: "Fix: link its OpenMausBot id, add a wake webhook, or set up a poll agent." };
+  }
+  /** What the owner of `token` sees: the bot's status, and the rooms it can see (never DMs, never
+   * rosters or listeners). Messages come per room from ownerRoom(). */
+  ownerView(token, { canWake = () => false, webhookSetFor = () => false } = {}) {
+    const m = this.ownerMember(token);
+    const rooms = this.rooms(m).map((r) => ({ name: r.name, topic: r.topic, visitors: !!r.visitors, private: !!r.private,
+      messages: r.messages, lastId: r.lastId, lastAt: r.lastAt, last: r.last }));
+    return {
+      bot: { name: m.name, kind: m.kind, role: m.is_admin ? "admin" : m.role, guest: isGuest(m), platform: m.platform ?? null,
+        model: m.model ?? null, server: serverLabel(m), lastSeen: m.last_seen ?? null, expiresAt: m.expires_at ?? null,
+        wake: this.wakeStatusFor(m, { canWake: canWake(m), webhookSet: !!webhookSetFor(m.id) }) },
+      rooms,
+    };
+  }
+  /** Messages of one room, as the token's bot sees them — same safe shape as the public watch feed
+   * (no file links, no claim codes, no keys). DMs are never shown. */
+  ownerRoom(token, roomName, { since = 0, limit = 50, editedSince } = {}) {
+    const m = this.ownerMember(token);
+    const r = this.room(String(roomName ?? "").replace(/^#/, "").trim().toLowerCase());
+    if (!r || isDm(r)) throw httpError(404, "No such room");
+    if (!this.canSee(m, r)) throw httpError(403, "That room isn't visible to this bot");
+    limit = Math.max(1, Math.min(100, Number(limit) || 50));
+    const sinceId = Number(since) || 0;
+    const cols = "id, author_id, author_name, text, reply_to, guest, file_id, created_at, edited_at";
+    let rows;
+    if (sinceId > 0) rows = this.db.prepare(`SELECT ${cols} FROM messages WHERE room_id = ? AND archived_at IS NULL AND id > ? ORDER BY id ASC LIMIT ?`).all(r.id, sinceId, limit);
+    else rows = this.db.prepare(`SELECT ${cols} FROM messages WHERE room_id = ? AND archived_at IS NULL ORDER BY id DESC LIMIT ?`).all(r.id, limit).reverse();
+    const types = this.agentTypes();
+    const out = { room: r.name, topic: r.topic || "", messages: rows.map((x) => watchPublicMessage(x, types)), edited: [], now: Date.now() };
+    if (Number(editedSince) > 0) {
+      const ed = this.db.prepare(`SELECT ${cols} FROM messages WHERE room_id = ? AND archived_at IS NULL AND edited_at IS NOT NULL AND edited_at > ? AND id <= ? ORDER BY id LIMIT 100`).all(r.id, Number(editedSince), sinceId);
+      out.edited = ed.map((x) => watchPublicMessage(x, types));
+    }
+    return out;
+  }
+
   /** Class notes this member can read (granted to them; the admin and uploaders also see their own). */
   classNotes(viewer) {
     const rows = viewer?.is_admin || !viewer
@@ -817,7 +965,7 @@ export class Hub {
     text = String(text ?? "").trim();
     if (!text) throw httpError(400, "Message text is empty");
     if (text === "/clearall") throw httpError(author?.is_admin ? 400 : 403, author?.is_admin ? "To clear a room for everyone, type /clearall in the web app and confirm, or run: hubctl clear <room>" : "Only the hub owner can clear rooms for everyone");
-    if (text === "/clear" || text === "/unclear") throw httpError(400, "That's a command, not a message");
+    if (text === "/clear" || text === "/unclear" || CLEAR_N.test(text)) throw httpError(400, "That's a command, not a message");
     const max = guest ? GUEST_MAX_TEXT : MAX_TEXT;
     if (text.length > max) throw httpError(400, `Message is over ${max} characters`);
     if (replyTo !== null && replyTo !== undefined && replyTo !== "") {
@@ -833,6 +981,7 @@ export class Hub {
     const out = { ...publicMessage(msg, this.agentTypes(), this.fileMap([msg])), ...this.dmPublic(r, author) };
     if (resolved.notice) out.notice = resolved.notice;
     if (!silent) for (const fn of this.listeners) { try { fn({ message: out, room: r, mentions, author, depth, guestOrigin }); } catch (e) { console.error("listener", e); } }
+    this.emitEvent({ type: "message", room: r.name, message: out });
     return out;
   }
 
@@ -849,7 +998,7 @@ export class Hub {
     if (!r || !this.canSee(author, r)) throw httpError(403, "You can't see that room");
     text = String(text ?? "").trim();
     if (!text) throw httpError(400, "Message text is empty");
-    if (text === "/clear" || text === "/clearall" || text === "/unclear") throw httpError(400, "That's a command, not a message");
+    if (text === "/clear" || text === "/clearall" || text === "/unclear" || CLEAR_N.test(text)) throw httpError(400, "That's a command, not a message");
     if (text.length > MAX_TEXT) throw httpError(400, `Message is over ${MAX_TEXT} characters`);
     const resolved = this.resolveMentions(text, { author, room: r });
     const mentions = resolved.mentions.filter((m) => m.id !== author.id);
@@ -859,6 +1008,7 @@ export class Hub {
     const out = { ...publicMessage(fresh, this.agentTypes(), this.fileMap([fresh])), ...this.dmPublic(r, author) };
     if (resolved.notice) out.notice = resolved.notice;
     if (wake) for (const fn of this.listeners) { try { fn({ message: out, room: r, mentions, author, depth: d, guestOrigin: !!guestOrigin || !!msg.guest_origin }); } catch (e) { console.error("listener", e); } }
+    this.emitEvent({ type: "edited", room: r.name, message: out });
     return out;
   }
 
@@ -910,8 +1060,21 @@ export class Hub {
     const r = this.roomFor(member, roomName);
     const through = this.db.prepare("SELECT MAX(id) t FROM messages WHERE room_id = ? AND archived_at IS NULL").get(r.id)?.t ?? 0;
     const now = Date.now();
-    this.db.prepare("INSERT OR REPLACE INTO member_clears(member_id, room_id, cleared_through, cleared_at) VALUES (?,?,?,?)").run(member.id, r.id, through, now);
+    this.db.prepare("INSERT OR REPLACE INTO member_clears(member_id, room_id, cleared_through, cleared_at, kept) VALUES (?,?,?,?,0)").run(member.id, r.id, through, now);
     return { room: r.name, clearedThrough: through, clearedAt: now };
+  }
+  /** Hide everything but the last `keep` messages for one member only (their other devices too).
+   * `keep` is 1-50. If the room has `keep` or fewer visible messages, nothing is hidden. */
+  personalClearKeep(member, roomName, keep) {
+    const r = this.roomFor(member, roomName);
+    keep = Math.floor(Number(keep) || 5);
+    keep = Math.max(1, Math.min(50, keep));
+    const ids = this.db.prepare("SELECT id FROM messages WHERE room_id = ? AND archived_at IS NULL ORDER BY id DESC LIMIT ?").all(r.id, keep + 1).map((x) => x.id);
+    const now = Date.now();
+    if (ids.length <= keep) return { room: r.name, kept: ids.length, clearedThrough: this.viewClearedThrough(member, r.id), clearedAt: now, changed: false };
+    const through = ids[ids.length - 1]; // the message just before the last `keep`: everything at or below it is hidden
+    this.db.prepare("INSERT OR REPLACE INTO member_clears(member_id, room_id, cleared_through, cleared_at, kept) VALUES (?,?,?,?,?)").run(member.id, r.id, through, now, keep);
+    return { room: r.name, kept: keep, clearedThrough: through, clearedAt: now, changed: true };
   }
   /** Undo a personal /clear: that member sees the room's live messages again. */
   personalUnclear(member, roomName) {
@@ -932,6 +1095,7 @@ export class Hub {
       this.db.prepare("UPDATE rooms SET transcript_at = ? WHERE id = ?").run(now, r.id);
       const message = this.post(who, r.name, `🧹 ${who.name} cleared the room`, { via: "system", silent: true });
       this.db.exec("COMMIT");
+      this.emitEvent({ type: "refresh", room: r.name });
       return { room: r.name, archived, transcriptAt: now, message };
     } catch (e) {
       try { this.db.exec("ROLLBACK"); } catch {}
@@ -951,6 +1115,7 @@ export class Hub {
     const now = Date.now();
     const restored = this.db.prepare("UPDATE messages SET archived_at = NULL WHERE room_id = ? AND archived_at IS NOT NULL AND archived_at >= ?").run(r.id, sinceAt).changes;
     this.db.prepare("UPDATE rooms SET transcript_at = ? WHERE id = ?").run(now, r.id);
+    this.emitEvent({ type: "refresh", room: r.name });
     return { room: r.name, restored, since: sinceAt, transcriptAt: now };
   }
 
@@ -1042,7 +1207,10 @@ export class Hub {
     }
     return this.publicMember(this.member(m.id));
   }
-  approveRequest(id, { days = 30, by = "admin", name, as = "guest" } = {}) {
+  /** Admin only: approve a join request and create the member. The key is minted only when the requester
+   * claims it — unless `mint` is set, in which case the admin gets the real key + one-tap join link right now
+   * (shown once, like an invite) and the claim code stops working. */
+  approveRequest(id, { days = 30, by = "admin", name, as = "guest", mint = false } = {}) {
     const q = this.db.prepare("SELECT * FROM join_requests WHERE id = ?").get(Number(id));
     if (!q) throw httpError(404, "No such request");
     if (q.status !== "pending") throw httpError(409, `Already ${q.status}`);
@@ -1054,7 +1222,14 @@ export class Hub {
     const r = this.addMember({ name: name || q.name, kind: "bot", role: as, expiresAt: days > 0 ? now + days * 86_400_000 : null, invitedBy: `${by} (request #${q.id}${as === "member" ? ", as member" : ""})`, machine: null,
       keyHash: hashKey(newKey("unclaimed")), platform: q.platform });
     this.db.prepare("UPDATE join_requests SET status = 'approved', days = ?, member_id = ?, decided_at = ?, decided_by = ? WHERE id = ?").run(days, r.member.id, now, by, q.id);
-    return { request: q.id, member: r.member, claimUntil: now + CLAIM_TTL };
+    if (!mint) return { request: q.id, member: r.member, claimUntil: now + CLAIM_TTL };
+    // One-tap approve: mint the real key now and hand the admin the join link (shown once, like an invite).
+    const member = this.member(r.member.id);
+    const key = newKey(isGuest(member) ? "hubguest" : "hub");
+    this.db.prepare("UPDATE members SET key_hash = ? WHERE id = ?").run(hashKey(key), member.id);
+    this.db.prepare("UPDATE join_requests SET status = 'claimed', claimed_at = ? WHERE id = ?").run(now, q.id);
+    const rooms = this.rooms(member).map((x) => x.name);
+    return { request: q.id, member: this.publicMember(member), key, links: loginLinks(key), text: inviteText(member.name, key, member.expires_at, rooms), claimUntil: now + CLAIM_TTL, minted: true };
   }
   denyRequest(id, { by = "admin" } = {}) {
     const q = this.db.prepare("SELECT * FROM join_requests WHERE id = ?").get(Number(id));
