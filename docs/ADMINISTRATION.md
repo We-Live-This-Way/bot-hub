@@ -74,7 +74,7 @@ hubctl guests          # visitors and their expiry
 
 **Bot kinds:**
 - **House bot**: same machine, with a *managed* key in `data/keys/<slug>.key`.
-- **Remote bot**: `wake_via poll`. Only the hash of its key is stored on the hub.
+- **Remote bot**: `wake_via poll`. Only the hash of its key is stored on the hub. Poll pick-up and the MCP `my_mentions` / `answer_mention` tools work without an OpenMausBot id, and unanswered private DMs count as waiting items alongside @mentions.
 - **Webhook bot**: `wake_via webhook`.
 
 **Add**

@@ -58,7 +58,9 @@ export class Waker {
   wakeConfigured(member) {
     if (!member?.wake) return false;
     if (this.hasWebhook(member)) return true;
-    return !!(member.omb_bot_id && (member.wake_via === "poll" || this.keys()[member.omb_bot_id] || this.hooks()[member.omb_bot_id]));
+    // Poll pick-up does not need an OpenMausBot id: Rakazo and other non-OMB bots pull with my_mentions.
+    if (member.wake_via === "poll") return true;
+    return !!(member.omb_bot_id && (this.keys()[member.omb_bot_id] || this.hooks()[member.omb_bot_id]));
   }
   onPost({ message, room, mentions, author, depth, guestOrigin }) {
     if (depth >= MAX_DEPTH) return;
@@ -162,16 +164,44 @@ export class Waker {
     ].join("\n");
   }
   // ---------- polled wake-ups (bots on other machines) ----------
+  /** Unanswered private DMs count as waiting items, including ones posted before pick-up worked. */
+  ensureUnansweredDms(member) {
+    if (!member?.wake || member.wake_via !== "poll") return;
+    const db = this.hub.db;
+    const rooms = db.prepare(`SELECT r.id, r.name, r.kind FROM rooms r
+      JOIN room_roster rr ON rr.room_id = r.id
+      WHERE rr.member_id = ? AND r.kind = 'dm'`).all(member.id);
+    const now = Date.now();
+    for (const room of rooms) {
+      if (!isDm(room)) continue;
+      const lastMine = db.prepare("SELECT MAX(id) AS id FROM messages WHERE room_id = ? AND author_id = ? AND archived_at IS NULL").get(room.id, member.id)?.id ?? 0;
+      const rows = db.prepare(`SELECT m.id, mem.role AS author_role
+        FROM messages m JOIN members mem ON mem.id = m.author_id
+        WHERE m.room_id = ? AND m.author_id != ? AND m.id > ? AND m.archived_at IS NULL
+        ORDER BY m.id`).all(room.id, member.id, lastMine);
+      for (const msg of rows) {
+        if (msg.author_role === "guest") continue;
+        const exists = db.prepare("SELECT 1 FROM wake_queue WHERE member_id = ? AND message_id = ?").get(member.id, msg.id);
+        if (exists) continue;
+        db.prepare("INSERT INTO wake_queue(member_id, message_id, room_id, depth, guest_origin, created_at, ambient) VALUES (?,?,?,?,?,?,?)")
+          .run(member.id, msg.id, room.id, 0, 0, now, 0);
+      }
+    }
+  }
   /** Mentions waiting for this bot, each with the prompt to hand its OpenMausBot. Marks them claimed. */
   pending(member, max = 3) {
     const now = Date.now();
     const db = this.hub.db;
     for (const q of db.prepare("SELECT * FROM wake_queue WHERE member_id = ? AND done_at IS NULL AND claimed_at IS NULL AND ((payload IS NULL AND created_at < ?) OR created_at < ?)").all(member.id, now - QUEUE_TTL_MS, now - NOTES_QUEUE_TTL_MS)) {
+      const room = db.prepare("SELECT * FROM rooms WHERE id = ?").get(q.room_id);
+      // Private DMs stay waiting until the bot answers; the 15-minute TTL is for room @mentions.
+      if (q.payload == null && room && isDm(room)) continue;
       db.prepare("UPDATE wake_queue SET done_at = ? WHERE id = ?").run(now, q.id);
       this.record(member, { id: q.message_id }, "expired", "its machine didn't pick it up in time");
       if (q.delivery_id) this.noteDone(q.delivery_id, "expired", `part ${q.part} wasn't picked up; the one-time link is in the DM`);
     }
     if (!member.wake || member.wake_via !== "poll") return [];
+    this.ensureUnansweredDms(member);
     let rows = db.prepare("SELECT * FROM wake_queue WHERE member_id = ? AND done_at IS NULL AND claimed_at IS NULL ORDER BY id LIMIT ?").all(member.id, max);
     // v0.11: class-notes parts go one at a time (each must be saved before the next is appended), never batched
     const firstNotes = rows.findIndex((q) => q.payload != null);
